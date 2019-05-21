@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <!-- <TargetFramework>netstandard2.0</TargetFramework> -->
-    <TargetFrameworks>netstandard2.0;net45;net452;net46</TargetFrameworks>
+    <TargetFrameworks>netstandard2.0;net452;net46</TargetFrameworks>
     <SignAssembly>true</SignAssembly>
     <AssemblyOriginatorKeyFile>Axon.ZeroMQ.snk</AssemblyOriginatorKeyFile>
     <Company>Axon</Company>
@@ -16,12 +16,12 @@
   </ItemGroup>
   <ItemGroup>
     <!-- <Reference Include="..\common\bin\$(Configuration)\$(TargetFramework)\Axon.Common.dll" /> -->
-    <ProjectReference Include="..\Axon.Common\Axon.Common.csproj" />
+    <ProjectReference Include="..\Core\Axon.Common.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="Properties\" />
   </ItemGroup>
-  <Target Name="PostBuild" AfterTargets="PostBuildEvent" Condition="'$(TargetFramework)' == 'net46'">
+  <!-- <Target Name="PostBuild" AfterTargets="PostBuildEvent" Condition="'$(TargetFramework)' == 'net46'">
     <Exec Command="copy $(TargetPath) z:\current\bin" />
-  </Target>
+  </Target> -->
 </Project>
