@@ -463,8 +463,8 @@ namespace Axon.ZeroMQ
             Message message;
             string tag;
 
-            tag = this.TaggedReceiveBuffer.Keys.First();
-            if (!this.TaggedReceiveBuffer.IsEmpty && this.TaggedReceiveBuffer.TryRemove(tag, out message))
+            tag = this.TaggedReceiveBuffer.Keys.FirstOrDefault();
+            if (!string.IsNullOrEmpty(tag) && this.TaggedReceiveBuffer.TryRemove(tag, out message))
             {
                 this.lastGetBufferedTaggedData = DateTime.UtcNow;
                 // Console.WriteLine("Received Tagged Message");
@@ -477,8 +477,8 @@ namespace Axon.ZeroMQ
 
                 while (this.IsRunning)
                 {
-                    tag = this.TaggedReceiveBuffer.Keys.First();
-                    if (!this.TaggedReceiveBuffer.IsEmpty && this.TaggedReceiveBuffer.TryRemove(tag, out message))
+                    tag = this.TaggedReceiveBuffer.Keys.FirstOrDefault();
+                    if (!string.IsNullOrEmpty(tag) && this.TaggedReceiveBuffer.TryRemove(tag, out message))
                     {
                         this.lastGetBufferedTaggedData = DateTime.UtcNow;
                         // Console.WriteLine("Received Tagged Message");
