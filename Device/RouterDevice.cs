@@ -73,6 +73,9 @@ namespace Axon.ZeroMQ
         private NetMQQueue<Message> AltFrontendBuffer { get; set; }
         private NetMQQueue<Message> AltBackendBuffer { get; set; }
 
+        private int sendCount = 0;
+        private int receiveCount = 0;
+
         public RouterDevice(IZeroMQServerEndpoint frontendEndpoint, IZeroMQServerEndpoint backendEndpoint)
             : base()
         {
@@ -146,6 +149,9 @@ namespace Axon.ZeroMQ
 
                                     var message = netmqMessage.ToMessage(true);
 
+                                    //this.receiveCount++;
+                                    //Console.WriteLine("RECEIVED " + this.receiveCount);
+
                                     var sourceEnvelope = message.Envelope;
 
                                     RegisteredBackend registeredBackend = null;
@@ -180,7 +186,7 @@ namespace Axon.ZeroMQ
 
                                     if (registeredBackend != null)
                                     {
-                                        Console.WriteLine($"Forwarding to [ {BitConverter.ToString(registeredBackend.Envelope)} ]");
+                                        //Console.WriteLine($"Forwarding to [ {BitConverter.ToString(registeredBackend.Envelope)} ]");
 
                                         message.Frames.Add($"envelope[{this.Identity}]", message.Envelope);
                                         message.Envelope = registeredBackend.Envelope;
@@ -248,7 +254,7 @@ namespace Axon.ZeroMQ
                             {
                                 while (this.AltFrontendBuffer.TryDequeue(out Message message, TimeSpan.Zero))
                                 {
-                                    Console.WriteLine("Backend forwarding");
+                                    //Console.WriteLine("Backend forwarding");
 
                                     if (!frontendSocket.TrySendMultipartMessage(TimeSpan.FromSeconds(1), message.ToNetMQMessage(true)))
                                     {
@@ -257,6 +263,9 @@ namespace Axon.ZeroMQ
                                         //var forwardedMessage = new Message(1, message.Frames, System.Text.Encoding.UTF8.GetBytes("Failed to forward to backend"), sourceEnvelope);
                                         //this.FrontendSocket.SendMultipartMessage(forwardedMessage.ToNetMQMessage(true));
                                     }
+
+                                    //this.sendCount++;
+                                    //Console.WriteLine("SENT " + this.sendCount);
                                 }
                             }
                             catch (Exception ex)
@@ -378,7 +387,7 @@ namespace Axon.ZeroMQ
                                     }
                                     else
                                     {
-                                        Console.WriteLine("Backend message received");
+                                        //Console.WriteLine("Backend message received");
                                         if (message.TryPluckFrame($"envelope[{this.Identity}]", out byte[] envelopeMetadata))
                                         {
                                             message.Envelope = envelopeMetadata;
@@ -435,7 +444,7 @@ namespace Axon.ZeroMQ
                             {
                                 while (this.AltBackendBuffer.TryDequeue(out Message message, TimeSpan.Zero))
                                 {
-                                    Console.WriteLine("Frontend forwarding");
+                                    //Console.WriteLine("Frontend forwarding");
 
                                     if (!backendSocket.TrySendMultipartMessage(TimeSpan.FromSeconds(1), message.ToNetMQMessage(true)))
                                     {

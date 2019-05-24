@@ -32,8 +32,18 @@ namespace Axon.ZeroMQ
             }
         }
 
+        private readonly int idleTimeout;
+        public int IdleTimeout
+        {
+            get
+            {
+                return this.idleTimeout;
+            }
+        }
+
         private readonly ConcurrentQueue<Message> receiveBuffer;
         private ConcurrentQueue<Message> ReceiveBuffer => receiveBuffer;
+        private readonly ConcurrentDictionary<string, Message> TaggedReceiveBuffer;
 
         //private readonly ConcurrentQueue<Message> sendBuffer;
         //private ConcurrentQueue<Message> SendBuffer => sendBuffer;
@@ -49,26 +59,30 @@ namespace Axon.ZeroMQ
         //private DealerSocket Socket { get; set; }
         private NetMQQueue<Message> AltSendBuffer;
 
-        public DealerServerTransport(IZeroMQClientEndpoint endpoint)
+        public DealerServerTransport(IZeroMQClientEndpoint endpoint, int idleTimeout = 0)
             : base()
         {
             this.endpoint = endpoint;
 
             this.identity = Guid.NewGuid().ToString().Replace("-", "").ToLowerInvariant();
+            this.idleTimeout = idleTimeout;
 
             this.receiveBuffer = new ConcurrentQueue<Message>();
+            this.TaggedReceiveBuffer = new ConcurrentDictionary<string, Message>();
             //this.sendBuffer = new ConcurrentQueue<Message>();
             //this.taggedReceiveBuffer = new ConcurrentDictionary<string, Message>();
             //this.sendBuffer = new ConcurrentQueue<Message>();
         }
-        public DealerServerTransport(IDiscoverer<IZeroMQClientEndpoint> discoverer)
+        public DealerServerTransport(IDiscoverer<IZeroMQClientEndpoint> discoverer, int idleTimeout = 0)
             : base()
         {
             this.discoverer = discoverer;
 
             this.identity = Guid.NewGuid().ToString().Replace("-", "").ToLowerInvariant();
+            this.idleTimeout = idleTimeout;
 
             this.receiveBuffer = new ConcurrentQueue<Message>();
+            this.TaggedReceiveBuffer = new ConcurrentDictionary<string, Message>();
             //this.sendBuffer = new ConcurrentQueue<Message>();
             //this.taggedReceiveBuffer = new ConcurrentDictionary<string, Message>();
             //this.sendBuffer = new ConcurrentQueue<Message>();
@@ -104,6 +118,37 @@ namespace Axon.ZeroMQ
 
             return new ReceivedData(payloadData, metadata);
         }
+        public override async Task<ReceivedData> Receive(string messageId)
+        {
+            var responseMessage = await this.GetBufferedTaggedData(messageId, 30000);
+
+            if (responseMessage.Signal != 0)
+            {
+                var errorMessage = System.Text.Encoding.UTF8.GetString(responseMessage.Payload);
+                throw new Exception($"Transport error ({responseMessage.Signal}): {errorMessage}");
+            }
+
+            var responsePayloadData = responseMessage.Payload;
+            var responseMetadata = responseMessage.Frames.ToDictionary(p => p.Key, p => p.Value);
+
+            this.OnDataReceived(responsePayloadData, responseMetadata);
+
+            return new ReceivedData(responsePayloadData, responseMetadata);
+        }
+
+        public override async Task<ReceivedTaggedData> ReceiveTagged()
+        {
+            var taggedMessage = await this.GetBufferedTaggedData();
+            var tag = taggedMessage.Tag;
+            var message = taggedMessage.Message;
+
+            var payloadData = message.Payload;
+            var metadata = message.Frames.ToDictionary(p => p.Key, p => p.Value);
+
+            this.OnDataReceived(payloadData, metadata);
+
+            return new ReceivedTaggedData(tag, payloadData, metadata);
+        }
 
         public override async Task Send(byte[] data, IDictionary<string, byte[]> metadata)
         {
@@ -120,6 +165,36 @@ namespace Axon.ZeroMQ
             //this.SendBuffer.Enqueue(message);
             //this.Socket.SendMultipartMessage(message.ToNetMQMessage(true));
             this.AltSendBuffer.Enqueue(message);
+        }
+        public override async Task Send(string messageId, byte[] data, IDictionary<string, byte[]> metadata)
+        {
+            await this.EnsureListening();
+
+            var encodedRid = System.Text.Encoding.ASCII.GetBytes(messageId);
+            var encodedIdentity = System.Text.Encoding.ASCII.GetBytes(this.Identity);
+
+            var frames = new Dictionary<string, byte[]>();
+
+            byte[] envelope = null;
+            foreach (var key in metadata.Keys)
+            {
+                switch (key)
+                {
+                    case "envelope":
+                        envelope = metadata[key];
+                        break;
+                    default:
+                        frames.Add(key, metadata[key]);
+                        break;
+                }
+            }
+
+            frames.Add("rid", encodedRid);
+
+            var message = new Message(0, frames, data, envelope);
+
+            this.AltSendBuffer.Enqueue(message);
+            //Console.WriteLine("AltSendBuffer Size: " + this.AltSendBuffer.Count());
         }
 
         public override Task<Func<Task<ReceivedData>>> SendAndReceive(byte[] data, IDictionary<string, byte[]> metadata)
@@ -160,6 +235,8 @@ namespace Axon.ZeroMQ
             {
                 try
                 {
+                    DateTime lastActivityTime;
+
                     this.IsListening = false;
 
                     using (var socket = new DealerSocket())
@@ -171,27 +248,45 @@ namespace Axon.ZeroMQ
                         {
                             try
                             {
-                                Console.WriteLine("receiving");
+                                //Console.WriteLine("receiving");
 
                                 var netmqMessage = new NetMQMessage();
                                 if (e.Socket.TryReceiveMultipartMessage(ref netmqMessage))
                                 {
                                     try
                                     {
+                                        lastActivityTime = DateTime.UtcNow;
+
                                         var message = netmqMessage.ToMessage(false);
 
-                                        //if (message.Frames.ContainsKey("rid"))
-                                        //{
-                                        //    var decodedRid = System.Text.Encoding.ASCII.GetString(message.Frames["rid"]);
+                                        byte[] encodedRid;
+                                        if (message.TryPluckFrame("rid", out encodedRid))
+                                        {
+                                            var decodedRid = System.Text.Encoding.ASCII.GetString(encodedRid);
 
-                                        //    Console.WriteLine("  Tagged message buffered " + decodedRid);
+                                            this.TaggedReceiveBuffer.TryAdd(decodedRid, message);
+                                            //Console.WriteLine("TaggedReceiveBuffer Size: " + this.TaggedReceiveBuffer.Count);
+                                        }
+                                        else
+                                        {
+                                            this.ReceiveBuffer.Enqueue(message);
+                                            //Console.WriteLine("ReceiveBuffer Size: " + this.ReceiveBuffer.Count);
+                                        }
 
-                                        //    this.TaggedReceiveBuffer.TryAdd(decodedRid, message);
-                                        //}
-                                        //else
-                                        //{
-                                        this.ReceiveBuffer.Enqueue(message);
-                                        //}
+                                        ////var message = netmqMessage.ToMessage(false);
+
+                                        //////if (message.Frames.ContainsKey("rid"))
+                                        //////{
+                                        //////    var decodedRid = System.Text.Encoding.ASCII.GetString(message.Frames["rid"]);
+
+                                        //////    Console.WriteLine("  Tagged message buffered " + decodedRid);
+
+                                        //////    this.TaggedReceiveBuffer.TryAdd(decodedRid, message);
+                                        //////}
+                                        //////else
+                                        //////{
+                                        ////this.ReceiveBuffer.Enqueue(message);
+                                        //////}
                                     }
                                     catch (Exception ex)
                                     {
@@ -240,6 +335,7 @@ namespace Axon.ZeroMQ
                             {
                                 while (this.AltSendBuffer.TryDequeue(out Message message, TimeSpan.Zero))
                                 {
+                                    lastActivityTime = DateTime.UtcNow;
                                     //Console.WriteLine("sending out");
 
                                     if (!socket.TrySendMultipartMessage(TimeSpan.FromSeconds(1), message.ToNetMQMessage(true)))
@@ -307,6 +403,7 @@ namespace Axon.ZeroMQ
                         //    { "Greeting", new byte[] { 1 } }
                         //}, new byte[] { 1 }).ToNetMQMessage(true));
 
+                        lastActivityTime = DateTime.UtcNow;
                         while (this.IsListening && this.IsRunning)
                         {
                             // Console.WriteLine("Heartbeat");
@@ -314,10 +411,11 @@ namespace Axon.ZeroMQ
                             //Console.WriteLine($"SENDING GREETING {this.Socket.HasOut}");
                             try
                             {
-                                if (!socket.TrySendMultipartMessage(TimeSpan.FromSeconds(1), new Message(0, new Dictionary<string, byte[]>() { { "Greeting", new byte[] { 1 } } }, new byte[] { 1 }).ToNetMQMessage(true)))
-                                {
-                                    Console.WriteLine("Failed to register dealer server");
-                                }
+                                this.AltSendBuffer.Enqueue(new Message(0, new Dictionary<string, byte[]>() { { "Greeting", new byte[] { 1 } } }, new byte[] { 1 }));
+                                //if (!socket.TrySendMultipartMessage(TimeSpan.FromSeconds(1), new Message(0, new Dictionary<string, byte[]>() { { "Greeting", new byte[] { 1 } } }, new byte[] { 1 }).ToNetMQMessage(true)))
+                                //{
+                                //    Console.WriteLine("Failed to register dealer server");
+                                //}
                             }
                             catch (Exception ex)
                             {
@@ -325,6 +423,9 @@ namespace Axon.ZeroMQ
                             }
 
                             await Task.Delay(1000);
+
+                            if (this.IdleTimeout > 0 && (DateTime.UtcNow - lastActivityTime).TotalMilliseconds > this.IdleTimeout)
+                                this.IsRunning = false;
                         }
 
                         //Console.WriteLine("Cleaning up");
@@ -374,6 +475,82 @@ namespace Axon.ZeroMQ
                     }
 
                     if ((DateTime.UtcNow - this.lastGetBufferedData).TotalSeconds > 1)
+                        await Task.Delay(1);
+                }
+
+                throw new Exception("Transport stopped");
+            }
+        }
+
+        private DateTime lastGetBufferedTaggedData = DateTime.UtcNow;
+        private async Task<TaggedMessage> GetBufferedTaggedData(int timeout = 0)
+        {
+            Message message;
+            string tag;
+
+            tag = this.TaggedReceiveBuffer.Keys.FirstOrDefault();
+            if (!string.IsNullOrEmpty(tag) && this.TaggedReceiveBuffer.TryRemove(tag, out message))
+            {
+                this.lastGetBufferedTaggedData = DateTime.UtcNow;
+                // Console.WriteLine("Received Tagged Message");
+
+                return new TaggedMessage(tag, message);
+            }
+            else
+            {
+                var start = DateTime.Now;
+
+                while (this.IsRunning)
+                {
+                    tag = this.TaggedReceiveBuffer.Keys.FirstOrDefault();
+                    if (!string.IsNullOrEmpty(tag) && this.TaggedReceiveBuffer.TryRemove(tag, out message))
+                    {
+                        this.lastGetBufferedTaggedData = DateTime.UtcNow;
+                        // Console.WriteLine("Received Tagged Message");
+
+                        return new TaggedMessage(tag, message);
+                    }
+                    else if (timeout > 0 && (DateTime.Now - start).TotalMilliseconds > timeout)
+                    {
+                        throw new Exception("Tagged message timeout");
+                    }
+
+                    if ((DateTime.UtcNow - this.lastGetBufferedTaggedData).TotalSeconds > 1)
+                        await Task.Delay(1);
+                }
+
+                throw new Exception("Transport stopped");
+            }
+        }
+        private async Task<Message> GetBufferedTaggedData(string rid, int timeout = 0)
+        {
+            Message message;
+            if (!this.TaggedReceiveBuffer.IsEmpty && this.TaggedReceiveBuffer.TryRemove(rid, out message))
+            {
+                this.lastGetBufferedTaggedData = DateTime.UtcNow;
+                // Console.WriteLine("Received Tagged Message");
+
+                return message;
+            }
+            else
+            {
+                var start = DateTime.Now;
+
+                while (this.IsRunning)
+                {
+                    if (!this.TaggedReceiveBuffer.IsEmpty && this.TaggedReceiveBuffer.TryRemove(rid, out message))
+                    {
+                        this.lastGetBufferedTaggedData = DateTime.UtcNow;
+                        // Console.WriteLine("Received Tagged Message");
+
+                        return message;
+                    }
+                    else if (timeout > 0 && (DateTime.Now - start).TotalMilliseconds > timeout)
+                    {
+                        throw new Exception("Tagged message timeout");
+                    }
+
+                    if ((DateTime.UtcNow - this.lastGetBufferedTaggedData).TotalSeconds > 1)
                         await Task.Delay(1);
                 }
 

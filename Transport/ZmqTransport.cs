@@ -1141,10 +1141,13 @@ namespace Axon.ZeroMQ
                     }
                     else
                     {
-                        for (var b = 0; a < netmqMessage.FrameCount; a++)
+                        for (var b = 0; b < netmqMessage.FrameCount; b++)
                             Console.WriteLine($"{b}: [ {BitConverter.ToString(netmqMessage[b].ToByteArray()).Replace("-", " ")} ]");
 
-                        throw new Exception("Unexpected frame count " + partBuffer.Count.ToString());
+                        for (var b = 0; b < netmqMessage.FrameCount; b++)
+                            Console.WriteLine($"{b}: [ {System.Text.Encoding.ASCII.GetString(netmqMessage[b].ToByteArray())} ] [ {System.Text.Encoding.UTF8.GetString(netmqMessage[b].ToByteArray())} ]");
+
+                        throw new Exception("Unexpected frame count (" + a + ") " + partBuffer.Count.ToString());
                     }
 
                     partBuffer.Clear();
