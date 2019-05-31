@@ -172,9 +172,6 @@ namespace Axon.ZeroMQ
             var encodedIdentity = System.Text.Encoding.ASCII.GetBytes(this.Identity);
 
             var frames = new Dictionary<string, byte[]>();
-            foreach (var key in metadata.Keys)
-                frames.Add(key, metadata[key]);
-            frames.Add("rid", encodedRid);
 
             byte[] envelope = null;
             foreach (var key in metadata.Keys)
@@ -189,6 +186,8 @@ namespace Axon.ZeroMQ
                         break;
                 }
             }
+
+            frames.Add("rid", encodedRid);
 
             var message = new Message(0, frames, data, envelope);
 

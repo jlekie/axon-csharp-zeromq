@@ -224,6 +224,10 @@ namespace Axon.ZeroMQ
 
     public class ClientEndpointDecoder : AEndpointDecoder<IZeroMQClientEndpoint>
     {
+        public override IZeroMQClientEndpoint Create(string hostname, int port)
+        {
+            return new TcpClientEndpoint(hostname, port);
+        }
         public override IZeroMQClientEndpoint Decode(byte[] payload)
         {
             var decodedPayload = System.Text.Encoding.UTF8.GetString(payload);
