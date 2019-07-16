@@ -273,12 +273,12 @@ namespace Axon.ZeroMQ
                                         var decodedRid = System.Text.Encoding.ASCII.GetString(encodedRid);
 
                                         this.TaggedReceiveBuffer.TryAdd(decodedRid, message);
-                                        Console.WriteLine("TaggedReceiveBuffer Size: " + this.TaggedReceiveBuffer.Count);
+                                        //Console.WriteLine("TaggedReceiveBuffer Size: " + this.TaggedReceiveBuffer.Count);
                                     }
                                     else
                                     {
                                         this.ReceiveBuffer.Enqueue(message);
-                                        Console.WriteLine("ReceiveBuffer Size: " + this.ReceiveBuffer.Count);
+                                        //Console.WriteLine("ReceiveBuffer Size: " + this.ReceiveBuffer.Count);
                                     }
                                 }
                             }
