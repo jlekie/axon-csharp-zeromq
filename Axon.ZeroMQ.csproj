@@ -15,7 +15,7 @@
     <PackageReference Include="NetMQ" Version="4.0.0.1" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Core\Axon.Common.csproj" />
+    <ProjectReference Include="..\axon\Axon.Common.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="Properties\" />
