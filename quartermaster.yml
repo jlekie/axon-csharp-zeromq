@@ -1,0 +1,6 @@
+module: "@jlekie/quartermaster-csproj"
+identifier: axon.zeromq
+projectPath: ./Axon.ZeroMQ.csproj
+projectReferences:
+  - referenceProperty: AxonCommonProjectPath
+    projectIdentifier: axon.core
