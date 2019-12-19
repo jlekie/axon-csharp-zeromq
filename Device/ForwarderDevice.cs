@@ -415,6 +415,7 @@ namespace Axon.ZeroMQ
                 try
                 {
                     var endpoints = await this.BackendDiscoverer.DiscoverAll();
+
                     foreach (var endpoint in endpoints)
                     {
                         var endpointId = BitConverter.ToString(endpoint.Encode());
