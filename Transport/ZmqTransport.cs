@@ -5,60 +5,200 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
 using System.IO;
+using System.Text;
+
 using NetMQ;
 using NetMQ.Sockets;
 
 namespace Axon.ZeroMQ
 {
-    internal struct Message
-    {
-        public Dictionary<string, byte[]> Frames;
-        public byte[] Payload;
-        public byte[] Envelope;
-        public int Signal;
+    //public class ZmqTransportMessage : ATransportMessage
+    //{
+    //    public static ZmqTransportMessage FromNmqMessage(NetMQMessage nmqm)
+    //    {
+    //        var signal = nmqm[0].ConvertToInt32();
+    //        var payload = nmqm.Last.ToByteArray();
 
-        public Message(int signal, IDictionary<string ,byte[]> frames, byte[] payload)
-        {
-            this.Frames = new Dictionary<string, byte[]>(frames);
-            this.Payload = payload;
-            this.Envelope = null;
-            this.Signal = signal;
-        }
-        public Message(int signal, IDictionary<string ,byte[]> frames, byte[] payload, byte[] envelope)
-        {
-            this.Frames = new Dictionary<string, byte[]>(frames);
-            this.Payload = payload;
-            this.Envelope = envelope;
-            this.Signal = signal;
-        }
+    //        var metadata = new List<TransportMessageMetadata>();
+    //        for (var a = 1; a < nmqm.FrameCount - 1; a += 3)
+    //        {
+    //            var key = Encoding.ASCII.GetString(nmqm[a].ToByteArray());
+    //            var data = nmqm[a + 1].ToByteArray();
 
-        public bool TryPluckFrame(string key, out byte[] data)
-        {
-            if (this.Frames.ContainsKey(key))
-            {
-                data = this.Frames[key];
-                this.Frames.Remove(key);
+    //            metadata.Add(new TransportMessageMetadata(key, data));
+    //        }
 
-                return true;
-            }
-            else
-            {
-                data = null;
-                return false;
-            }
-        }
-    }
-    internal struct TaggedMessage
-    {
-        public string Tag;
-        public Message Message;
+    //        return new ZmqTransportMessage(signal, payload, metadata.ToArray());
+    //    }
+    //    public static ZmqTransportMessage FromNmqDealerMessage(NetMQMessage nmqm)
+    //    {
+    //        var envelope = nmqm[0].ToByteArray();
+    //        var signal = nmqm[1].ConvertToInt32();
+    //        var payload = nmqm.Last.ToByteArray();
 
-        public TaggedMessage(string tag, Message message)
-        {
-            this.Tag = tag;
-            this.Message = message;
-        }
-    }
+    //        var metadata = new List<TransportMessageMetadata>();
+    //        for (var a = 2; a < nmqm.FrameCount - 1; a += 3)
+    //        {
+    //            var key = Encoding.ASCII.GetString(nmqm[a].ToByteArray());
+    //            var data = nmqm[a + 1].ToByteArray();
+
+    //            metadata.Add(new TransportMessageMetadata(key, data));
+    //        }
+
+    //        return new ZmqTransportMessage(signal, payload, metadata.ToArray());
+    //    }
+
+    //    public readonly int Signal;
+
+    //    public ZmqTransportMessage(int signal, byte[] payload, ITransportMessageMetadata[] metadata)
+    //        : base(payload, metadata)
+    //    {
+    //        this.Signal = signal;
+    //    }
+
+    //    public NetMQMessage ToNetMQMessage()
+    //    {
+    //        var nmqm = new NetMQMessage();
+
+    //        nmqm.Append(this.Signal);
+
+    //        foreach (var metadata in this.Metadata)
+    //        {
+    //            nmqm.Append(new NetMQFrame(Encoding.ASCII.GetBytes(metadata.Id)));
+    //            nmqm.Append(new NetMQFrame(metadata.Data));
+    //            nmqm.AppendEmptyFrame();
+    //        }
+
+    //        nmqm.Append(new NetMQFrame(this.Payload));
+
+    //        return nmqm;
+    //    }
+    //    public NetMQMessage ToNetMQDealerMessage(byte[] envelope)
+    //    {
+    //        var nmqm = new NetMQMessage();
+
+    //        nmqm.Append(new NetMQFrame(envelope));
+    //        nmqm.Append(this.Signal);
+
+    //        foreach (var metadata in this.Metadata)
+    //        {
+    //            nmqm.Append(new NetMQFrame(Encoding.ASCII.GetBytes(metadata.Id)));
+    //            nmqm.Append(new NetMQFrame(metadata.Data));
+    //            nmqm.AppendEmptyFrame();
+    //        }
+
+    //        nmqm.Append(new NetMQFrame(this.Payload));
+
+    //        return nmqm;
+    //    }
+    //}
+    //public class ZmqDealerTransportMessage : ATransportMessage
+    //{
+    //    public static ZmqDealerTransportMessage FromNmqMessage(NetMQMessage nmqm)
+    //    {
+    //        var envelope = nmqm[0].ToByteArray();
+    //        var signal = nmqm[1].ConvertToInt32();
+    //        var payload = nmqm.Last.ToByteArray();
+
+    //        var metadata = new List<ZmqTransportMessageMetadata>();
+    //        for (var a = 2; a < nmqm.FrameCount - 1; a += 3)
+    //        {
+    //            var key = Encoding.ASCII.GetString(nmqm[a].ToByteArray());
+    //            var data = nmqm[a + 1].ToByteArray();
+
+    //            metadata.Add(new ZmqTransportMessageMetadata(key, data));
+    //        }
+
+    //        return new ZmqDealerTransportMessage(signal, envelope, payload, metadata.ToArray());
+    //    }
+    //    //public static ZmqDealerTransportMessage FromZmqTransportMessage(ZmqTransportMessage sourceMessage)
+    //    //{
+    //    //    var forwardedMetadata = new List<ITransportMessageMetadata>();
+
+    //    //    var envelopeMetadata = sourceMessage.GetMetadata($"envelope[{this.}]")
+
+    //    //    return new ZmqDealerTransportMessage(sourceMessage.Signal, )
+    //    //}
+
+    //    public readonly int Signal;
+    //    public readonly byte[] Envelope;
+
+    //    public ZmqDealerTransportMessage(int signal, byte[] envelope, byte[] payload, ITransportMessageMetadata[] metadata)
+    //        : base(payload, metadata)
+    //    {
+    //        this.Signal = signal;
+    //        this.Envelope = envelope;
+    //    }
+
+    //    public NetMQMessage ToNetMQMessage()
+    //    {
+    //        var nmqm = new NetMQMessage();
+
+    //        nmqm.Append(new NetMQFrame(this.Envelope));
+    //        nmqm.Append(this.Signal);
+
+    //        foreach (var metadata in this.Metadata)
+    //        {
+    //            nmqm.Append(new NetMQFrame(Encoding.ASCII.GetBytes(metadata.Id)));
+    //            nmqm.Append(new NetMQFrame(metadata.Data));
+    //            nmqm.AppendEmptyFrame();
+    //        }
+
+    //        nmqm.Append(new NetMQFrame(this.Payload));
+
+    //        return nmqm;
+    //    }
+    //}
+
+    //internal struct Message
+    //{
+    //    public Dictionary<string, byte[]> Frames;
+    //    public byte[] Payload;
+    //    public byte[] Envelope;
+    //    public int Signal;
+
+    //    public Message(int signal, IDictionary<string ,byte[]> frames, byte[] payload)
+    //    {
+    //        this.Frames = new Dictionary<string, byte[]>(frames);
+    //        this.Payload = payload;
+    //        this.Envelope = null;
+    //        this.Signal = signal;
+    //    }
+    //    public Message(int signal, IDictionary<string ,byte[]> frames, byte[] payload, byte[] envelope)
+    //    {
+    //        this.Frames = new Dictionary<string, byte[]>(frames);
+    //        this.Payload = payload;
+    //        this.Envelope = envelope;
+    //        this.Signal = signal;
+    //    }
+
+    //    public bool TryPluckFrame(string key, out byte[] data)
+    //    {
+    //        if (this.Frames.ContainsKey(key))
+    //        {
+    //            data = this.Frames[key];
+    //            this.Frames.Remove(key);
+
+    //            return true;
+    //        }
+    //        else
+    //        {
+    //            data = null;
+    //            return false;
+    //        }
+    //    }
+    //}
+    //internal struct TaggedMessage
+    //{
+    //    public string Tag;
+    //    public Message Message;
+
+    //    public TaggedMessage(string tag, Message message)
+    //    {
+    //        this.Tag = tag;
+    //        this.Message = message;
+    //    }
+    //}
 
     public interface IZeroMQTransport : ITransport
     {
@@ -94,14 +234,14 @@ namespace Axon.ZeroMQ
             }
         }
 
-        private readonly ConcurrentQueue<Message> ReceiveBuffer;
-        private readonly ConcurrentDictionary<string, Message> TaggedReceiveBuffer;
+        private readonly ConcurrentQueue<TransportMessage> ReceiveBuffer;
+        private readonly ConcurrentDictionary<string, TransportMessage> TaggedReceiveBuffer;
         //private readonly ConcurrentQueue<Message> SendBuffer;
 
         private Task ListeningTask;
 
         //private RouterSocket Socket;
-        private NetMQQueue<Message> AltSendBuffer;
+        private NetMQQueue<TransportMessage> AltSendBuffer;
 
         public RouterServerTransport(IZeroMQServerEndpoint endpoint)
         {
@@ -109,8 +249,8 @@ namespace Axon.ZeroMQ
 
             this.identity = Guid.NewGuid().ToString().Replace("-", "").ToLowerInvariant();
 
-            this.ReceiveBuffer = new ConcurrentQueue<Message>();
-            this.TaggedReceiveBuffer = new ConcurrentDictionary<string, Message>();
+            this.ReceiveBuffer = new ConcurrentQueue<TransportMessage>();
+            this.TaggedReceiveBuffer = new ConcurrentDictionary<string, TransportMessage>();
             //this.SendBuffer = new ConcurrentQueue<Message>();
         }
 
@@ -133,114 +273,53 @@ namespace Axon.ZeroMQ
             await this.ListeningTask;
         }
 
-        public override async Task Send(byte[] data, IDictionary<string, byte[]> metadata)
-        {
-            await this.EnsureListening();
-            // Console.WriteLine(data.Length);
-
-            var frames = new Dictionary<string, byte[]>();
-            byte[] envelope = null;
-            foreach (var key in metadata.Keys)
-            {
-                switch (key)
-                {
-                    case "envelope":
-                        envelope = metadata[key];
-                        break;
-                    default:
-                        frames.Add(key, metadata[key]);
-                        break;
-                }
-            }
-
-            // byte[] identityData;
-            // if (!frames.TryGetValue("identity", out identityData))
-            //     throw new Exception("Identity metadata missing");
-            // var identity = System.Text.Encoding.ASCII.GetString(identityData);
-
-            var message = new Message(0, frames, data, envelope);
-            //this.SendBuffer.Enqueue(message);
-            //this.Socket.SendMultipartMessage(message.ToNetMQMessage(true));
-            this.AltSendBuffer.Enqueue(message);
-            //Console.WriteLine("AltSendBuffer Size: " + this.AltSendBuffer.Count());
-        }
-        public override async Task Send(string messageId, byte[] data, IDictionary<string, byte[]> metadata)
+        public override async Task Send(ITransportMessage message)
         {
             await this.EnsureListening();
 
-            var encodedRid = System.Text.Encoding.ASCII.GetBytes(messageId);
-            var encodedIdentity = System.Text.Encoding.ASCII.GetBytes(this.Identity);
+            var forwardedMessage = TransportMessage.FromMessage(message);
 
-            var frames = new Dictionary<string, byte[]>();
+            this.AltSendBuffer.Enqueue(forwardedMessage);
+        }
+        public override async Task Send(string messageId, ITransportMessage message)
+        {
+            await this.EnsureListening();
 
-            byte[] envelope = null;
-            foreach (var key in metadata.Keys)
-            {
-                switch (key)
-                {
-                    case "envelope":
-                        envelope = metadata[key];
-                        break;
-                    default:
-                        frames.Add(key, metadata[key]);
-                        break;
-                }
-            }
+            var forwardedMessage = TransportMessage.FromMessage(message);
 
-            frames.Add("rid", encodedRid);
+            var encodedMessageId = System.Text.Encoding.ASCII.GetBytes(messageId);
+            forwardedMessage.Metadata.Add($"rid[{this.Identity}]", encodedMessageId);
 
-            var message = new Message(0, frames, data, envelope);
-
-            this.AltSendBuffer.Enqueue(message);
-            //Console.WriteLine("AltSendBuffer Size: " + this.AltSendBuffer.Count());
+            this.AltSendBuffer.Enqueue(forwardedMessage);
         }
 
-        public override async Task<ReceivedData> Receive()
+        public override async Task<ITransportMessage> Receive()
         {
             var message = await this.GetBufferedData();
 
-            var payloadData = message.Payload;
-            var metadata = message.Frames.ToDictionary(p => p.Key, p => p.Value);
-            metadata.Add("envelope", message.Envelope);
+            this.OnMessageReceived(message);
 
-            this.OnDataReceived(payloadData, metadata);
-
-            return new ReceivedData(payloadData, metadata);
+            return message;
         }
-        public override async Task<ReceivedData> Receive(string messageId)
+        public override async Task<ITransportMessage> Receive(string messageId)
         {
-            var responseMessage = await this.GetBufferedTaggedData(messageId, 30000);
+            var message = await this.GetBufferedTaggedData(messageId, 30000);
 
-            if (responseMessage.Signal != 0)
-            {
-                var errorMessage = System.Text.Encoding.UTF8.GetString(responseMessage.Payload);
-                throw new Exception($"Transport error ({responseMessage.Signal}): {errorMessage}");
-            }
+            this.OnMessageReceived(message);
 
-            var responsePayloadData = responseMessage.Payload;
-            var responseMetadata = responseMessage.Frames.ToDictionary(p => p.Key, p => p.Value);
-
-            this.OnDataReceived(responsePayloadData, responseMetadata);
-
-            return new ReceivedData(responsePayloadData, responseMetadata);
+            return message;
         }
 
-        public override async Task<ReceivedTaggedData> ReceiveTagged()
+        public override async Task<TaggedTransportMessage> ReceiveTagged()
         {
             var taggedMessage = await this.GetBufferedTaggedData();
-            var tag = taggedMessage.Tag;
-            var message = taggedMessage.Message;
 
-            var payloadData = message.Payload;
-            var metadata = message.Frames.ToDictionary(p => p.Key, p => p.Value);
-            metadata.Add("envelope", message.Envelope);
+            this.OnMessageReceived(taggedMessage.Message);
 
-            this.OnDataReceived(payloadData, metadata);
-
-            return new ReceivedTaggedData(tag, payloadData, metadata);
+            return taggedMessage;
         }
 
-        public override Task<Func<Task<ReceivedData>>> SendAndReceive(byte[] data, IDictionary<string, byte[]> metadata)
+        public override Task<Func<Task<ITransportMessage>>> SendAndReceive(ITransportMessage message)
         {
             throw new NotImplementedException();
         }
@@ -254,7 +333,7 @@ namespace Axon.ZeroMQ
                     //var sendTimer = new NetMQTimer(TimeSpan.FromMilliseconds(10));
 
                     using (var socket = new RouterSocket())
-                    using (this.AltSendBuffer = new NetMQQueue<Message>())
+                    using (this.AltSendBuffer = new NetMQQueue<TransportMessage>())
                     using (var poller = new NetMQPoller() { socket, this.AltSendBuffer })
                     using (var monitor = new NetMQ.Monitoring.NetMQMonitor(socket, $"inproc://monitor.routerserver.{Guid.NewGuid().ToString()}", SocketEvents.Listening | SocketEvents.Closed))
                     {
@@ -265,20 +344,22 @@ namespace Axon.ZeroMQ
                                 var netmqMessage = new NetMQMessage();
                                 if (e.Socket.TryReceiveMultipartMessage(ref netmqMessage))
                                 {
-                                    var message = netmqMessage.ToMessage(true);
+                                    var message = netmqMessage.ToMessage(out var envelope);
+
+                                    message.Metadata.Add($"envelope[{this.Identity}]", envelope);
+
+                                    //this.OnDataReceived(message.Payload, message.Frames);
 
                                     byte[] encodedRid;
-                                    if (message.TryPluckFrame("rid", out encodedRid))
+                                    if (message.Metadata.TryPluck($"rid[{this.Identity}]", out encodedRid))
                                     {
-                                        var decodedRid = System.Text.Encoding.ASCII.GetString(encodedRid);
+                                        var decodedRid = Encoding.ASCII.GetString(encodedRid);
 
                                         this.TaggedReceiveBuffer.TryAdd(decodedRid, message);
-                                        //Console.WriteLine("TaggedReceiveBuffer Size: " + this.TaggedReceiveBuffer.Count);
                                     }
                                     else
                                     {
                                         this.ReceiveBuffer.Enqueue(message);
-                                        //Console.WriteLine("ReceiveBuffer Size: " + this.ReceiveBuffer.Count);
                                     }
                                 }
                             }
@@ -342,11 +423,12 @@ namespace Axon.ZeroMQ
                         {
                             try
                             {
-                                while (this.AltSendBuffer.TryDequeue(out Message message, TimeSpan.Zero))
+                                while (this.AltSendBuffer.TryDequeue(out var message, TimeSpan.Zero))
                                 {
-                                    //Console.WriteLine("sending");
+                                    if (!message.Metadata.TryPluck($"envelope[{this.Identity}]", out var envelope))
+                                        throw new Exception("Message envelope not found");
 
-                                    if (!socket.TrySendMultipartMessage(TimeSpan.FromSeconds(1), message.ToNetMQMessage(true)))
+                                    if (!socket.TrySendMultipartMessage(TimeSpan.FromSeconds(1), message.ToNetMQMessage(envelope)))
                                     {
                                         Console.WriteLine("Failed to send message");
                                     }
@@ -418,9 +500,9 @@ namespace Axon.ZeroMQ
         }
 
         private DateTime lastGetBufferedData = DateTime.UtcNow;
-        private async Task<Message> GetBufferedData(int timeout = 0)
+        private async Task<ITransportMessage> GetBufferedData(int timeout = 0)
         {
-            Message message;
+            TransportMessage message;
             if (!this.ReceiveBuffer.IsEmpty && this.ReceiveBuffer.TryDequeue(out message))
             {
                 this.lastGetBufferedData = DateTime.UtcNow;
@@ -457,9 +539,9 @@ namespace Axon.ZeroMQ
         }
 
         private DateTime lastGetBufferedTaggedData = DateTime.UtcNow;
-        private async Task<TaggedMessage> GetBufferedTaggedData(int timeout = 0)
+        private async Task<TaggedTransportMessage> GetBufferedTaggedData(int timeout = 0)
         {
-            Message message;
+            TransportMessage message;
             string tag;
 
             tag = this.TaggedReceiveBuffer.Keys.FirstOrDefault();
@@ -468,7 +550,7 @@ namespace Axon.ZeroMQ
                 this.lastGetBufferedTaggedData = DateTime.UtcNow;
                 // Console.WriteLine("Received Tagged Message");
 
-                return new TaggedMessage(tag, message);
+                return new TaggedTransportMessage(tag, message);
             }
             else
             {
@@ -482,7 +564,7 @@ namespace Axon.ZeroMQ
                         this.lastGetBufferedTaggedData = DateTime.UtcNow;
                         // Console.WriteLine("Received Tagged Message");
 
-                        return new TaggedMessage(tag, message);
+                        return new TaggedTransportMessage(tag, message);
                     }
                     else if (timeout > 0 && (DateTime.Now - start).TotalMilliseconds > timeout)
                     {
@@ -496,9 +578,9 @@ namespace Axon.ZeroMQ
                 throw new Exception("Transport stopped");
             }
         }
-        private async Task<Message> GetBufferedTaggedData(string rid, int timeout = 0)
+        private async Task<ITransportMessage> GetBufferedTaggedData(string rid, int timeout = 0)
         {
-            Message message;
+            TransportMessage message;
             if (!this.TaggedReceiveBuffer.IsEmpty && this.TaggedReceiveBuffer.TryRemove(rid, out message))
             {
                 this.lastGetBufferedTaggedData = DateTime.UtcNow;
@@ -579,13 +661,13 @@ namespace Axon.ZeroMQ
             }
         }
 
-        private readonly ConcurrentQueue<Message> ReceiveBuffer;
-        private readonly ConcurrentDictionary<string, Message> TaggedReceiveBuffer;
+        private readonly ConcurrentQueue<TransportMessage> ReceiveBuffer;
+        private readonly ConcurrentDictionary<string, TransportMessage> TaggedReceiveBuffer;
         //private readonly ConcurrentQueue<Message> SendBuffer;
 
         private Task ListeningTask;
         //private DealerSocket Socket { get; set; }
-        private NetMQQueue<Message> AltSendBuffer;
+        private NetMQQueue<TransportMessage> AltSendBuffer;
 
         public DealerClientTransport(IZeroMQClientEndpoint endpoint, int idleTimeout = 0)
         {
@@ -594,8 +676,8 @@ namespace Axon.ZeroMQ
             this.identity = Guid.NewGuid().ToString().Replace("-", "").ToLowerInvariant();
             this.idleTimeout = idleTimeout;
 
-            this.ReceiveBuffer = new ConcurrentQueue<Message>();
-            this.TaggedReceiveBuffer = new ConcurrentDictionary<string, Message>();
+            this.ReceiveBuffer = new ConcurrentQueue<TransportMessage>();
+            this.TaggedReceiveBuffer = new ConcurrentDictionary<string, TransportMessage>();
             //this.SendBuffer = new ConcurrentQueue<Message>();
         }
         public DealerClientTransport(IDiscoverer<IZeroMQClientEndpoint> discoverer, int idleTimeout = 0)
@@ -605,8 +687,8 @@ namespace Axon.ZeroMQ
             this.identity = Guid.NewGuid().ToString().Replace("-", "").ToLowerInvariant();
             this.idleTimeout = idleTimeout;
 
-            this.ReceiveBuffer = new ConcurrentQueue<Message>();
-            this.TaggedReceiveBuffer = new ConcurrentDictionary<string, Message>();
+            this.ReceiveBuffer = new ConcurrentQueue<TransportMessage>();
+            this.TaggedReceiveBuffer = new ConcurrentDictionary<string, TransportMessage>();
             //this.SendBuffer = new ConcurrentQueue<Message>();
         }
 
@@ -640,131 +722,70 @@ namespace Axon.ZeroMQ
             await this.ListeningTask;
         }
 
-        public override async Task Send(byte[] data, IDictionary<string, byte[]> metadata)
+        public override async Task Send(ITransportMessage message)
         {
             await this.EnsureConnected();
 
-            //Console.WriteLine(data.Length);
+            var forwardedMessage = TransportMessage.FromMessage(message);
 
-            var encodedIdentity = System.Text.Encoding.ASCII.GetBytes(this.Identity);
-
-            var frames = new Dictionary<string, byte[]>();
-            foreach (var key in metadata.Keys)
-                frames.Add(key, metadata[key]);
-            // frames.Add("source_identity", encodedIdentity);
-
-            var message = new Message(0, frames, data);
-            //this.SendBuffer.Enqueue(message);
-            //this.Socket.SendMultipartMessage(message.ToNetMQMessage(true));
-            this.AltSendBuffer.Enqueue(message);
-            //Console.WriteLine("AltSendBuffer Size: " + this.AltSendBuffer.Count());
+            this.AltSendBuffer.Enqueue(forwardedMessage);
         }
-        public override async Task Send(string messageId, byte[] data, IDictionary<string, byte[]> metadata)
+        public override async Task Send(string messageId, ITransportMessage message)
         {
             await this.EnsureConnected();
 
-            var encodedRid = System.Text.Encoding.ASCII.GetBytes(messageId);
-            var encodedIdentity = System.Text.Encoding.ASCII.GetBytes(this.Identity);
+            var forwardedMessage = TransportMessage.FromMessage(message);
 
-            var frames = new Dictionary<string, byte[]>();
-            foreach (var key in metadata.Keys)
-                frames.Add(key, metadata[key]);
-            frames.Add("rid", encodedRid);
+            var encodedMessageId = System.Text.Encoding.ASCII.GetBytes(messageId);
+            forwardedMessage.Metadata.Add($"rid[{this.Identity}]", encodedMessageId);
 
-            byte[] envelope = null;
-            foreach (var key in metadata.Keys)
-            {
-                switch (key)
-                {
-                    case "envelope":
-                        envelope = metadata[key];
-                        break;
-                    default:
-                        frames.Add(key, metadata[key]);
-                        break;
-                }
-            }
-
-            var message = new Message(0, frames, data, envelope);
-
-            this.AltSendBuffer.Enqueue(message);
-            //Console.WriteLine("AltSendBuffer Size: " + this.AltSendBuffer.Count());
+            this.AltSendBuffer.Enqueue(forwardedMessage);
         }
 
-        public override async Task<ReceivedData> Receive()
+        public override async Task<ITransportMessage> Receive()
         {
             var message = await this.GetBufferedData(30000);
 
-            if (message.Signal != 0)
-            {
-                var errorMessage = System.Text.Encoding.UTF8.GetString(message.Payload);
-                throw new Exception($"Transport error ({message.Signal}): {errorMessage}");
-            }
+            this.OnMessageReceived(message);
 
-            var payloadData = message.Payload;
-            var metadata = message.Frames.ToDictionary(p => p.Key, p => p.Value);
-
-            this.OnDataReceived(payloadData, metadata);
-
-            return new ReceivedData(payloadData, metadata);
+            return message;
         }
-        public override async Task<ReceivedData> Receive(string messageId)
+        public override async Task<ITransportMessage> Receive(string messageId)
         {
-            var responseMessage = await this.GetBufferedTaggedData(messageId, 30000);
+            var message = await this.GetBufferedTaggedData(messageId, 30000);
 
-            if (responseMessage.Signal != 0)
-            {
-                var errorMessage = System.Text.Encoding.UTF8.GetString(responseMessage.Payload);
-                throw new Exception($"Transport error ({responseMessage.Signal}): {errorMessage}");
-            }
+            this.OnMessageReceived(message);
 
-            var responsePayloadData = responseMessage.Payload;
-            var responseMetadata = responseMessage.Frames.ToDictionary(p => p.Key, p => p.Value);
+            return message;
+        }
+        public override async Task<TaggedTransportMessage> ReceiveTagged()
+        {
+            var taggedMessage = await this.GetBufferedTaggedData();
 
-            this.OnDataReceived(responsePayloadData, responseMetadata);
+            this.OnMessageReceived(taggedMessage.Message);
 
-            return new ReceivedData(responsePayloadData, responseMetadata);
+            return taggedMessage;
         }
 
-        public override async Task<Func<Task<ReceivedData>>> SendAndReceive(byte[] data, IDictionary<string, byte[]> metadata)
+        public override async Task<Func<Task<ITransportMessage>>> SendAndReceive(ITransportMessage message)
         {
             await this.EnsureConnected();
 
-            // Console.WriteLine(data.Length);
+            var forwardedMessage = TransportMessage.FromMessage(message);
 
-            var rid = Guid.NewGuid().ToString().Replace("-", "").ToLowerInvariant();
-            var encodedRid = System.Text.Encoding.ASCII.GetBytes(rid);
+            var messageId = Guid.NewGuid().ToString().Replace("-", "").ToLowerInvariant();
 
-            var encodedIdentity = System.Text.Encoding.ASCII.GetBytes(this.Identity);
+            var encodedMessageId = System.Text.Encoding.ASCII.GetBytes(messageId);
+            forwardedMessage.Metadata.Add($"rid[{this.Identity}]", encodedMessageId);
 
-            var frames = new Dictionary<string, byte[]>();
-            foreach (var key in metadata.Keys)
-                frames.Add(key, metadata[key]);
-            frames.Add("rid", encodedRid);
+            this.AltSendBuffer.Enqueue(forwardedMessage);
 
-            var message = new Message(0, frames, data);
-            //this.SendBuffer.Enqueue(message);
-            //this.Socket.SendMultipartMessage(message.ToNetMQMessage(true));
-            this.AltSendBuffer.Enqueue(message);
+            return new Func<Task<ITransportMessage>>(async () => {
+                var responseMessage = await this.GetBufferedTaggedData(messageId, 30000);
 
-            return new Func<Task<ReceivedData>>(async () => {
-                // var getBuffered = System.Diagnostics.Stopwatch.StartNew();
-                var responseMessage = await this.GetBufferedTaggedData(rid, 30000);
-                // getBuffered.Stop();
-                // Console.WriteLine("GetBufferedTaggedData: " + getBuffered.ElapsedMilliseconds);
+                this.OnMessageReceived(responseMessage);
 
-                if (responseMessage.Signal != 0)
-                {
-                    var errorMessage = System.Text.Encoding.UTF8.GetString(responseMessage.Payload);
-                    throw new Exception($"Transport error ({responseMessage.Signal}): {errorMessage}");
-                }
-
-                var responsePayloadData = responseMessage.Payload;
-                var responseMetadata = responseMessage.Frames.ToDictionary(p => p.Key, p => p.Value);
-
-                this.OnDataReceived(responsePayloadData, responseMetadata);
-
-                return new ReceivedData(responsePayloadData, responseMetadata);
+                return responseMessage;
             });
         }
 
@@ -781,7 +802,7 @@ namespace Axon.ZeroMQ
                     //var sendTimer = new NetMQTimer(TimeSpan.FromMilliseconds(10));
 
                     using (var socket = new DealerSocket())
-                    using (this.AltSendBuffer = new NetMQQueue<Message>())
+                    using (this.AltSendBuffer = new NetMQQueue<TransportMessage>())
                     using (var poller = new NetMQPoller() { socket, this.AltSendBuffer })
                     using (var monitor = new NetMQ.Monitoring.NetMQMonitor(socket, $"inproc://monitor.dealerclient.{Guid.NewGuid().ToString()}", SocketEvents.Connected | SocketEvents.Disconnected))
                     {
@@ -796,19 +817,20 @@ namespace Axon.ZeroMQ
                                 {
                                     lastActivityTime = DateTime.UtcNow;
 
-                                    var message = netmqMessage.ToMessage(false);
+                                    var message = netmqMessage.ToMessage();
 
-                                    if (message.Frames.ContainsKey("rid"))
+                                    //this.OnDataReceived(message.Payload, message.Frames);
+
+                                    byte[] encodedRid;
+                                    if (message.Metadata.TryPluck($"rid[{this.Identity}]", out encodedRid))
                                     {
-                                        var decodedRid = System.Text.Encoding.ASCII.GetString(message.Frames["rid"]);
+                                        var decodedRid = Encoding.ASCII.GetString(encodedRid);
 
                                         this.TaggedReceiveBuffer.TryAdd(decodedRid, message);
-                                        Console.WriteLine("TaggedReceiveBuffer Size: " + this.TaggedReceiveBuffer.Count);
                                     }
                                     else
                                     {
                                         this.ReceiveBuffer.Enqueue(message);
-                                        Console.WriteLine("ReceiveBuffer Size: " + this.ReceiveBuffer.Count);
                                     }
                                 }
                             }
@@ -872,12 +894,11 @@ namespace Axon.ZeroMQ
                         {
                             try
                             {
-                                while (this.AltSendBuffer.TryDequeue(out Message message, TimeSpan.Zero))
+                                while (this.AltSendBuffer.TryDequeue(out var message, TimeSpan.Zero))
                                 {
                                     lastActivityTime = DateTime.UtcNow;
-                                    //Console.WriteLine("sending");
 
-                                    if (!socket.TrySendMultipartMessage(TimeSpan.FromSeconds(1), message.ToNetMQMessage(true)))
+                                    if (!socket.TrySendMultipartMessage(TimeSpan.FromSeconds(1), message.ToNetMQMessage()))
                                     {
                                         Console.WriteLine("Failed to send message");
                                     }
@@ -966,9 +987,9 @@ namespace Axon.ZeroMQ
         }
 
         private DateTime lastGetBufferedData = DateTime.UtcNow;
-        private async Task<Message> GetBufferedData(int timeout = 0)
+        private async Task<TransportMessage> GetBufferedData(int timeout = 0)
         {
-            Message message;
+            TransportMessage message;
             if (!this.ReceiveBuffer.IsEmpty && this.ReceiveBuffer.TryDequeue(out message))
             {
                 this.lastGetBufferedData = DateTime.UtcNow;
@@ -1005,15 +1026,18 @@ namespace Axon.ZeroMQ
         }
 
         private DateTime lastGetBufferedTaggedData = DateTime.UtcNow;
-        private async Task<Message> GetBufferedTaggedData(int timeout = 0)
+        private async Task<TaggedTransportMessage> GetBufferedTaggedData(int timeout = 0)
         {
-            Message message;
-            if (!this.TaggedReceiveBuffer.IsEmpty && this.TaggedReceiveBuffer.TryRemove(this.TaggedReceiveBuffer.Keys.First(), out message))
+            TransportMessage message;
+            string tag;
+
+            tag = this.TaggedReceiveBuffer.Keys.FirstOrDefault();
+            if (!this.TaggedReceiveBuffer.IsEmpty && this.TaggedReceiveBuffer.TryRemove(tag, out message))
             {
                 this.lastGetBufferedTaggedData = DateTime.UtcNow;
                 // Console.WriteLine("Received Tagged Message");
 
-                return message;
+                return new TaggedTransportMessage(tag, message);
             }
             else
             {
@@ -1021,12 +1045,13 @@ namespace Axon.ZeroMQ
 
                 while (this.IsRunning)
                 {
-                    if (!this.TaggedReceiveBuffer.IsEmpty && this.TaggedReceiveBuffer.TryRemove(this.TaggedReceiveBuffer.Keys.First(), out message))
+                    tag = this.TaggedReceiveBuffer.Keys.FirstOrDefault();
+                    if (!this.TaggedReceiveBuffer.IsEmpty && this.TaggedReceiveBuffer.TryRemove(tag, out message))
                     {
                         this.lastGetBufferedTaggedData = DateTime.UtcNow;
                         // Console.WriteLine("Received Tagged Message");
 
-                        return message;
+                        return new TaggedTransportMessage(tag, message);
                     }
                     else if (timeout > 0 && (DateTime.Now - start).TotalMilliseconds > timeout)
                     {
@@ -1040,9 +1065,9 @@ namespace Axon.ZeroMQ
                 throw new Exception("Transport stopped");
             }
         }
-        private async Task<Message> GetBufferedTaggedData(string rid, int timeout = 0)
+        private async Task<TransportMessage> GetBufferedTaggedData(string rid, int timeout = 0)
         {
-            Message message;
+            TransportMessage message;
             if (!this.TaggedReceiveBuffer.IsEmpty && this.TaggedReceiveBuffer.TryRemove(rid, out message))
             {
                 this.lastGetBufferedTaggedData = DateTime.UtcNow;
@@ -1101,23 +1126,18 @@ namespace Axon.ZeroMQ
 
     internal static class MessageHelpers
     {
-        public static Message ToMessage(this NetMQMessage netmqMessage, bool dealerMessage)
+        public static TransportMessage ToMessage(this NetMQMessage netmqMessage)
         {
-            var frames = new Dictionary<string, byte[]>();
+            var metadata = new List<ITransportMessageMetadata>();
+
             byte[] payload = null;
-            byte[] envelope = null;
             int signal = -1;
 
             int startingFrame = 0;
 
-            if (dealerMessage)
-            {
-                envelope = netmqMessage[0].ToByteArray();
-
-                startingFrame++;
-            }
-
             signal = netmqMessage[startingFrame].ConvertToInt32();
+            if (signal != 0)
+                throw new Exception("Message received with signal code " + signal.ToString());
             startingFrame++;
 
             var partBuffer = new List<NetMQFrame>();
@@ -1132,7 +1152,7 @@ namespace Axon.ZeroMQ
                         var name = System.Text.Encoding.ASCII.GetString(partBuffer[0].ToByteArray());
                         var framePayload = partBuffer[1].ToByteArray();
 
-                        frames.Add(name, framePayload);
+                        metadata.Add(new TransportMessageMetadata(name, framePayload));
                     }
                     else if (partBuffer.Count == 0)
                     {
@@ -1160,22 +1180,98 @@ namespace Axon.ZeroMQ
             if (payload == null)
                 throw new Exception("Missing payload");
 
-            return new Message(signal, frames, payload, envelope);
+            return new TransportMessage(payload, metadata);
+        }
+        public static TransportMessage ToMessage(this NetMQMessage netmqMessage, out byte[] envelope)
+        {
+            var metadata = new List<ITransportMessageMetadata>();
+
+            byte[] payload = null;
+            int signal = -1;
+
+            int startingFrame = 0;
+
+            envelope = netmqMessage[0].ToByteArray();
+            startingFrame++;
+
+            signal = netmqMessage[startingFrame].ConvertToInt32();
+            if (signal != 0)
+                throw new Exception("Message received with signal code " + signal.ToString());
+            startingFrame++;
+
+            var partBuffer = new List<NetMQFrame>();
+            for (var a = startingFrame; a < netmqMessage.FrameCount; a++)
+            {
+                var frame = netmqMessage[a];
+
+                if (frame.IsEmpty || a >= netmqMessage.FrameCount - 1)
+                {
+                    if (partBuffer.Count == 2)
+                    {
+                        var name = System.Text.Encoding.ASCII.GetString(partBuffer[0].ToByteArray());
+                        var framePayload = partBuffer[1].ToByteArray();
+
+                        metadata.Add(new TransportMessageMetadata(name, framePayload));
+                    }
+                    else if (partBuffer.Count == 0)
+                    {
+                        payload = frame.ToByteArray();
+                    }
+                    else
+                    {
+                        for (var b = 0; b < netmqMessage.FrameCount; b++)
+                            Console.WriteLine($"{b}: [ {BitConverter.ToString(netmqMessage[b].ToByteArray()).Replace("-", " ")} ]");
+
+                        for (var b = 0; b < netmqMessage.FrameCount; b++)
+                            Console.WriteLine($"{b}: [ {System.Text.Encoding.ASCII.GetString(netmqMessage[b].ToByteArray())} ] [ {System.Text.Encoding.UTF8.GetString(netmqMessage[b].ToByteArray())} ]");
+
+                        throw new Exception("Unexpected frame count (" + a + ") " + partBuffer.Count.ToString());
+                    }
+
+                    partBuffer.Clear();
+                }
+                else
+                {
+                    partBuffer.Add(frame);
+                }
+            }
+
+            if (payload == null)
+                throw new Exception("Missing payload");
+
+            return new TransportMessage(payload, metadata);
         }
 
-        public static NetMQMessage ToNetMQMessage(this Message message, bool dealerMessage)
+        public static NetMQMessage ToNetMQMessage(this ITransportMessage message)
         {
             var netqmMessage = new NetMQMessage();
 
-            if (message.Envelope != null)
-                netqmMessage.Append(new NetMQFrame(message.Envelope));
+            netqmMessage.Append(0);
 
-            netqmMessage.Append(message.Signal);
-
-            foreach (var frame in message.Frames)
+            foreach (var frame in message.Metadata)
             {
-                netqmMessage.Append(new NetMQFrame(System.Text.Encoding.ASCII.GetBytes(frame.Key)));
-                netqmMessage.Append(new NetMQFrame(frame.Value));
+                netqmMessage.Append(new NetMQFrame(System.Text.Encoding.ASCII.GetBytes(frame.Id)));
+                netqmMessage.Append(new NetMQFrame(frame.Data));
+                netqmMessage.AppendEmptyFrame();
+            }
+
+            netqmMessage.Append(new NetMQFrame(message.Payload));
+
+            return netqmMessage;
+        }
+        public static NetMQMessage ToNetMQMessage(this ITransportMessage message, byte[] envelope)
+        {
+            var netqmMessage = new NetMQMessage();
+
+            if (envelope != null)
+                netqmMessage.Append(new NetMQFrame(envelope));
+
+            netqmMessage.Append(0);
+
+            foreach (var frame in message.Metadata)
+            {
+                netqmMessage.Append(new NetMQFrame(System.Text.Encoding.ASCII.GetBytes(frame.Id)));
+                netqmMessage.Append(new NetMQFrame(frame.Data));
                 netqmMessage.AppendEmptyFrame();
             }
 
@@ -1184,14 +1280,14 @@ namespace Axon.ZeroMQ
             return netqmMessage;
         }
 
-        public static void WriteMessage(Message message)
+        public static void WriteMessage(TransportMessage message)
         {
-            if (message.Envelope != null)
-                Console.WriteLine("  Envelope" + " [ " + BitConverter.ToString(message.Envelope).Replace("-", " ") + " ]");
-            foreach (var frame in message.Frames)
-                Console.WriteLine("  " + frame.Key + " [ " + BitConverter.ToString(frame.Value).Replace("-", " ") + " ]");
+            //if (message.Envelope != null)
+            //    Console.WriteLine("  Envelope" + " [ " + BitConverter.ToString(message.Envelope).Replace("-", " ") + " ]");
+            foreach (var frame in message.Metadata)
+                Console.WriteLine("  " + frame.Id + " [ " + BitConverter.ToString(frame.Data).Replace("-", " ") + " ]");
             Console.WriteLine("  Payload" + " [ " + BitConverter.ToString(message.Payload).Replace("-", " ") + " ]");
-            Console.WriteLine("  Signal " + message.Signal);
+            //Console.WriteLine("  Signal " + message.Signal);
         }
     }
 }
