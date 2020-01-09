@@ -17,7 +17,7 @@ namespace Axon.ZeroMQ
             public IZeroMQClientEndpoint Endpoint { get; private set; }
             public DateTime RegisteredDate { get; private set; }
 
-            public NetMQQueue<Message> BackendBuffer { get; private set; }
+            public NetMQQueue<TransportMessage> BackendBuffer { get; private set; }
 
             public ForwarderDevice ForwarderDevice { get; private set; }
 
@@ -75,7 +75,7 @@ namespace Axon.ZeroMQ
                     try
                     {
                         using (var socket = new DealerSocket())
-                        using (this.BackendBuffer = new NetMQQueue<Message>())
+                        using (this.BackendBuffer = new NetMQQueue<TransportMessage>())
                         using (var poller = new NetMQPoller() { socket, this.BackendBuffer })
                         using (var monitor = new NetMQ.Monitoring.NetMQMonitor(socket, $"inproc://monitor.forwarderdevice.backend.{Guid.NewGuid().ToString()}", SocketEvents.Connected | SocketEvents.Disconnected))
                         {
@@ -88,12 +88,9 @@ namespace Axon.ZeroMQ
                                     var netmqMessage = new NetMQMessage();
                                     if (e.Socket.TryReceiveMultipartMessage(ref netmqMessage))
                                     {
-                                        var message = netmqMessage.ToMessage(false);
-                                        if (message.TryPluckFrame($"envelope[{this.ForwarderDevice.Identity}]", out byte[] envelopeMetadata))
-                                        {
-                                            message.Envelope = envelopeMetadata;
-                                            this.ForwarderDevice.frontendBuffer.Enqueue(message);
-                                        }
+                                        var message = netmqMessage.ToMessage();
+
+                                        this.ForwarderDevice.frontendBuffer.Enqueue(message);
                                     }
                                 }
                                 catch (Exception ex)
@@ -106,9 +103,9 @@ namespace Axon.ZeroMQ
                             {
                                 try
                                 {
-                                    while (this.BackendBuffer.TryDequeue(out Message message, TimeSpan.Zero))
+                                    while (this.BackendBuffer.TryDequeue(out TransportMessage message, TimeSpan.Zero))
                                     {
-                                        if (!socket.TrySendMultipartMessage(TimeSpan.FromSeconds(1), message.ToNetMQMessage(true)))
+                                        if (!socket.TrySendMultipartMessage(TimeSpan.FromSeconds(1), message.ToNetMQMessage()))
                                         {
                                             Console.WriteLine("Failed to send message");
                                         }
@@ -196,7 +193,7 @@ namespace Axon.ZeroMQ
         public bool IsRunning => isRunning;
 
         private Task handlerTask;
-        private NetMQQueue<Message> frontendBuffer;
+        private NetMQQueue<TransportMessage> frontendBuffer;
         private ConcurrentQueue<string> backendEndpointIds;
         private ConcurrentDictionary<string, RegisteredBackend> backendEndpoints;
 
@@ -248,7 +245,7 @@ namespace Axon.ZeroMQ
                     var connectionString = this.FrontendEndpoint.ToConnectionString();
 
                     using (var frontendSocket = new RouterSocket())
-                    using (this.frontendBuffer = new NetMQQueue<Message>())
+                    using (this.frontendBuffer = new NetMQQueue<TransportMessage>())
                     using (var poller = new NetMQPoller() { frontendSocket, this.frontendBuffer })
                     using (var monitor = new NetMQ.Monitoring.NetMQMonitor(frontendSocket, $"inproc://monitor.forwarderdevice.{Guid.NewGuid().ToString()}", SocketEvents.Listening | SocketEvents.Accepted | SocketEvents.Disconnected | SocketEvents.Closed))
                     {
@@ -259,8 +256,8 @@ namespace Axon.ZeroMQ
                                 var netmqMessage = new NetMQMessage();
                                 while (e.Socket.TryReceiveMultipartMessage(ref netmqMessage))
                                 {
-                                    var message = netmqMessage.ToMessage(true);
-                                    var sourceEnvelope = message.Envelope;
+                                    var message = netmqMessage.ToMessage(out var envelope);
+                                    //var sourceEnvelope = message.Envelope;
 
                                     var forwardStart = DateTime.UtcNow;
                                     RegisteredBackend registeredBackend = null;
@@ -308,8 +305,7 @@ namespace Axon.ZeroMQ
 
                                     if (registeredBackend != null)
                                     {
-                                        message.Frames.Add($"envelope[{this.Identity}]", message.Envelope);
-                                        message.Envelope = null;
+                                        message.Metadata.Add($"envelope[{this.Identity}]", envelope);
 
                                         registeredBackend.BackendBuffer.Enqueue(message);
                                     }
@@ -317,8 +313,8 @@ namespace Axon.ZeroMQ
                                     {
                                         Console.WriteLine("No backends available!!!");
 
-                                        var forwardedMessage = new Message(1, message.Frames, System.Text.Encoding.UTF8.GetBytes("No backends found"), message.Envelope);
-                                        e.Socket.SendMultipartMessage(forwardedMessage.ToNetMQMessage(true));
+                                        var nmqm = MessageHelpers.CreateNetMQErrorMessage(envelope, "No backends found", message.Metadata);
+                                        e.Socket.SendMultipartMessage(nmqm);
                                     }
                                 }
                             }
@@ -332,9 +328,12 @@ namespace Axon.ZeroMQ
                         {
                             try
                             {
-                                while (this.frontendBuffer.TryDequeue(out Message message, TimeSpan.Zero))
+                                while (this.frontendBuffer.TryDequeue(out TransportMessage message, TimeSpan.Zero))
                                 {
-                                    if (!frontendSocket.TrySendMultipartMessage(TimeSpan.FromSeconds(1), message.ToNetMQMessage(true)))
+                                    if (!message.Metadata.TryPluck($"envelope[{this.Identity}]", out var envelope))
+                                        throw new Exception("Message envelope not found");
+
+                                    if (!frontendSocket.TrySendMultipartMessage(TimeSpan.FromSeconds(1), message.ToNetMQMessage(envelope)))
                                     {
                                         Console.WriteLine("Failed to forward to frontend");
                                     }

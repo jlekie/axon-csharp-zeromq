@@ -273,7 +273,7 @@ namespace Axon.ZeroMQ
             await this.ListeningTask;
         }
 
-        public override async Task Send(ITransportMessage message)
+        public override async Task Send(TransportMessage message)
         {
             await this.EnsureListening();
 
@@ -281,7 +281,7 @@ namespace Axon.ZeroMQ
 
             this.AltSendBuffer.Enqueue(forwardedMessage);
         }
-        public override async Task Send(string messageId, ITransportMessage message)
+        public override async Task Send(string messageId, TransportMessage message)
         {
             await this.EnsureListening();
 
@@ -293,7 +293,7 @@ namespace Axon.ZeroMQ
             this.AltSendBuffer.Enqueue(forwardedMessage);
         }
 
-        public override async Task<ITransportMessage> Receive()
+        public override async Task<TransportMessage> Receive()
         {
             var message = await this.GetBufferedData();
 
@@ -301,7 +301,7 @@ namespace Axon.ZeroMQ
 
             return message;
         }
-        public override async Task<ITransportMessage> Receive(string messageId)
+        public override async Task<TransportMessage> Receive(string messageId)
         {
             var message = await this.GetBufferedTaggedData(messageId, 30000);
 
@@ -319,7 +319,7 @@ namespace Axon.ZeroMQ
             return taggedMessage;
         }
 
-        public override Task<Func<Task<ITransportMessage>>> SendAndReceive(ITransportMessage message)
+        public override Task<Func<Task<TransportMessage>>> SendAndReceive(TransportMessage message)
         {
             throw new NotImplementedException();
         }
@@ -500,7 +500,7 @@ namespace Axon.ZeroMQ
         }
 
         private DateTime lastGetBufferedData = DateTime.UtcNow;
-        private async Task<ITransportMessage> GetBufferedData(int timeout = 0)
+        private async Task<TransportMessage> GetBufferedData(int timeout = 0)
         {
             TransportMessage message;
             if (!this.ReceiveBuffer.IsEmpty && this.ReceiveBuffer.TryDequeue(out message))
@@ -578,7 +578,7 @@ namespace Axon.ZeroMQ
                 throw new Exception("Transport stopped");
             }
         }
-        private async Task<ITransportMessage> GetBufferedTaggedData(string rid, int timeout = 0)
+        private async Task<TransportMessage> GetBufferedTaggedData(string rid, int timeout = 0)
         {
             TransportMessage message;
             if (!this.TaggedReceiveBuffer.IsEmpty && this.TaggedReceiveBuffer.TryRemove(rid, out message))
@@ -722,7 +722,7 @@ namespace Axon.ZeroMQ
             await this.ListeningTask;
         }
 
-        public override async Task Send(ITransportMessage message)
+        public override async Task Send(TransportMessage message)
         {
             await this.EnsureConnected();
 
@@ -730,7 +730,7 @@ namespace Axon.ZeroMQ
 
             this.AltSendBuffer.Enqueue(forwardedMessage);
         }
-        public override async Task Send(string messageId, ITransportMessage message)
+        public override async Task Send(string messageId, TransportMessage message)
         {
             await this.EnsureConnected();
 
@@ -742,7 +742,7 @@ namespace Axon.ZeroMQ
             this.AltSendBuffer.Enqueue(forwardedMessage);
         }
 
-        public override async Task<ITransportMessage> Receive()
+        public override async Task<TransportMessage> Receive()
         {
             var message = await this.GetBufferedData(30000);
 
@@ -750,7 +750,7 @@ namespace Axon.ZeroMQ
 
             return message;
         }
-        public override async Task<ITransportMessage> Receive(string messageId)
+        public override async Task<TransportMessage> Receive(string messageId)
         {
             var message = await this.GetBufferedTaggedData(messageId, 30000);
 
@@ -767,7 +767,7 @@ namespace Axon.ZeroMQ
             return taggedMessage;
         }
 
-        public override async Task<Func<Task<ITransportMessage>>> SendAndReceive(ITransportMessage message)
+        public override async Task<Func<Task<TransportMessage>>> SendAndReceive(TransportMessage message)
         {
             await this.EnsureConnected();
 
@@ -780,7 +780,7 @@ namespace Axon.ZeroMQ
 
             this.AltSendBuffer.Enqueue(forwardedMessage);
 
-            return new Func<Task<ITransportMessage>>(async () => {
+            return new Func<Task<TransportMessage>>(async () => {
                 var responseMessage = await this.GetBufferedTaggedData(messageId, 30000);
 
                 this.OnMessageReceived(responseMessage);
@@ -1128,7 +1128,7 @@ namespace Axon.ZeroMQ
     {
         public static TransportMessage ToMessage(this NetMQMessage netmqMessage)
         {
-            var metadata = new List<ITransportMessageMetadata>();
+            var metadata = new VolatileTransportMetadata();
 
             byte[] payload = null;
             int signal = -1;
@@ -1152,7 +1152,7 @@ namespace Axon.ZeroMQ
                         var name = System.Text.Encoding.ASCII.GetString(partBuffer[0].ToByteArray());
                         var framePayload = partBuffer[1].ToByteArray();
 
-                        metadata.Add(new TransportMessageMetadata(name, framePayload));
+                        metadata.Frames.Add(new VolatileTransportMetadataFrame(name, framePayload));
                     }
                     else if (partBuffer.Count == 0)
                     {
@@ -1184,7 +1184,7 @@ namespace Axon.ZeroMQ
         }
         public static TransportMessage ToMessage(this NetMQMessage netmqMessage, out byte[] envelope)
         {
-            var metadata = new List<ITransportMessageMetadata>();
+            var metadata = new VolatileTransportMetadata();
 
             byte[] payload = null;
             int signal = -1;
@@ -1211,7 +1211,7 @@ namespace Axon.ZeroMQ
                         var name = System.Text.Encoding.ASCII.GetString(partBuffer[0].ToByteArray());
                         var framePayload = partBuffer[1].ToByteArray();
 
-                        metadata.Add(new TransportMessageMetadata(name, framePayload));
+                        metadata.Frames.Add(new VolatileTransportMetadataFrame(name, framePayload));
                     }
                     else if (partBuffer.Count == 0)
                     {
@@ -1242,13 +1242,13 @@ namespace Axon.ZeroMQ
             return new TransportMessage(payload, metadata);
         }
 
-        public static NetMQMessage ToNetMQMessage(this ITransportMessage message)
+        public static NetMQMessage ToNetMQMessage(this TransportMessage message)
         {
             var netqmMessage = new NetMQMessage();
 
             netqmMessage.Append(0);
 
-            foreach (var frame in message.Metadata)
+            foreach (var frame in message.Metadata.Frames)
             {
                 netqmMessage.Append(new NetMQFrame(System.Text.Encoding.ASCII.GetBytes(frame.Id)));
                 netqmMessage.Append(new NetMQFrame(frame.Data));
@@ -1259,16 +1259,15 @@ namespace Axon.ZeroMQ
 
             return netqmMessage;
         }
-        public static NetMQMessage ToNetMQMessage(this ITransportMessage message, byte[] envelope)
+        public static NetMQMessage ToNetMQMessage(this TransportMessage message, byte[] envelope)
         {
             var netqmMessage = new NetMQMessage();
 
-            if (envelope != null)
-                netqmMessage.Append(new NetMQFrame(envelope));
+            netqmMessage.Append(new NetMQFrame(envelope));
 
             netqmMessage.Append(0);
 
-            foreach (var frame in message.Metadata)
+            foreach (var frame in message.Metadata.Frames)
             {
                 netqmMessage.Append(new NetMQFrame(System.Text.Encoding.ASCII.GetBytes(frame.Id)));
                 netqmMessage.Append(new NetMQFrame(frame.Data));
@@ -1284,10 +1283,47 @@ namespace Axon.ZeroMQ
         {
             //if (message.Envelope != null)
             //    Console.WriteLine("  Envelope" + " [ " + BitConverter.ToString(message.Envelope).Replace("-", " ") + " ]");
-            foreach (var frame in message.Metadata)
+            foreach (var frame in message.Metadata.Frames)
                 Console.WriteLine("  " + frame.Id + " [ " + BitConverter.ToString(frame.Data).Replace("-", " ") + " ]");
             Console.WriteLine("  Payload" + " [ " + BitConverter.ToString(message.Payload).Replace("-", " ") + " ]");
             //Console.WriteLine("  Signal " + message.Signal);
+        }
+
+        public static NetMQMessage CreateNetMQErrorMessage(string message, ITransportMetadata metadata)
+        {
+            var netqmMessage = new NetMQMessage();
+
+            netqmMessage.Append(1);
+
+            foreach (var frame in metadata.Frames)
+            {
+                netqmMessage.Append(new NetMQFrame(System.Text.Encoding.ASCII.GetBytes(frame.Id)));
+                netqmMessage.Append(new NetMQFrame(frame.Data));
+                netqmMessage.AppendEmptyFrame();
+            }
+
+            netqmMessage.Append(new NetMQFrame(Encoding.UTF8.GetBytes(message)));
+
+            return netqmMessage;
+        }
+        public static NetMQMessage CreateNetMQErrorMessage(byte[] envelope, string message, ITransportMetadata metadata)
+        {
+            var netqmMessage = new NetMQMessage();
+
+            netqmMessage.Append(new NetMQFrame(envelope));
+
+            netqmMessage.Append(1);
+
+            foreach (var frame in metadata.Frames)
+            {
+                netqmMessage.Append(new NetMQFrame(System.Text.Encoding.ASCII.GetBytes(frame.Id)));
+                netqmMessage.Append(new NetMQFrame(frame.Data));
+                netqmMessage.AppendEmptyFrame();
+            }
+
+            netqmMessage.Append(new NetMQFrame(Encoding.UTF8.GetBytes(message)));
+
+            return netqmMessage;
         }
     }
 }

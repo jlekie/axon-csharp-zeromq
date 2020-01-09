@@ -41,9 +41,10 @@ namespace Axon.ZeroMQ
             }
         }
 
-        private readonly ConcurrentQueue<Message> receiveBuffer;
-        private ConcurrentQueue<Message> ReceiveBuffer => receiveBuffer;
-        private readonly ConcurrentDictionary<string, Message> TaggedReceiveBuffer;
+        private readonly ConcurrentQueue<TransportMessage> receiveBuffer;
+        private ConcurrentQueue<TransportMessage> ReceiveBuffer => receiveBuffer;
+
+        private readonly ConcurrentDictionary<string, TransportMessage> TaggedReceiveBuffer;
 
         //private readonly ConcurrentQueue<Message> sendBuffer;
         //private ConcurrentQueue<Message> SendBuffer => sendBuffer;
@@ -57,7 +58,7 @@ namespace Axon.ZeroMQ
         private Task ListeningTask { get; set; }
 
         //private DealerSocket Socket { get; set; }
-        private NetMQQueue<Message> AltSendBuffer;
+        private NetMQQueue<TransportMessage> AltSendBuffer;
 
         public DealerServerTransport(IZeroMQClientEndpoint endpoint, int idleTimeout = 0)
             : base()
@@ -67,8 +68,8 @@ namespace Axon.ZeroMQ
             this.identity = Guid.NewGuid().ToString().Replace("-", "").ToLowerInvariant();
             this.idleTimeout = idleTimeout;
 
-            this.receiveBuffer = new ConcurrentQueue<Message>();
-            this.TaggedReceiveBuffer = new ConcurrentDictionary<string, Message>();
+            this.receiveBuffer = new ConcurrentQueue<TransportMessage>();
+            this.TaggedReceiveBuffer = new ConcurrentDictionary<string, TransportMessage>();
             //this.sendBuffer = new ConcurrentQueue<Message>();
             //this.taggedReceiveBuffer = new ConcurrentDictionary<string, Message>();
             //this.sendBuffer = new ConcurrentQueue<Message>();
@@ -81,8 +82,8 @@ namespace Axon.ZeroMQ
             this.identity = Guid.NewGuid().ToString().Replace("-", "").ToLowerInvariant();
             this.idleTimeout = idleTimeout;
 
-            this.receiveBuffer = new ConcurrentQueue<Message>();
-            this.TaggedReceiveBuffer = new ConcurrentDictionary<string, Message>();
+            this.receiveBuffer = new ConcurrentQueue<TransportMessage>();
+            this.TaggedReceiveBuffer = new ConcurrentDictionary<string, TransportMessage>();
             //this.sendBuffer = new ConcurrentQueue<Message>();
             //this.taggedReceiveBuffer = new ConcurrentDictionary<string, Message>();
             //this.sendBuffer = new ConcurrentQueue<Message>();
@@ -107,97 +108,53 @@ namespace Axon.ZeroMQ
             await this.ListeningTask;
         }
 
-        public override async Task<ReceivedData> Receive()
+        public override async Task<TransportMessage> Receive()
         {
             var message = await this.GetBufferedData();
 
-            var payloadData = message.Payload;
-            var metadata = message.Frames.ToDictionary(p => p.Key, p => p.Value);
+            this.OnMessageReceived(message);
 
-            this.OnDataReceived(payloadData, metadata);
-
-            return new ReceivedData(payloadData, metadata);
+            return message;
         }
-        public override async Task<ReceivedData> Receive(string messageId)
+        public override async Task<TransportMessage> Receive(string messageId)
         {
-            var responseMessage = await this.GetBufferedTaggedData(messageId, 30000);
+            var message = await this.GetBufferedTaggedData(messageId, 30000);
 
-            if (responseMessage.Signal != 0)
-            {
-                var errorMessage = System.Text.Encoding.UTF8.GetString(responseMessage.Payload);
-                throw new Exception($"Transport error ({responseMessage.Signal}): {errorMessage}");
-            }
+            this.OnMessageReceived(message);
 
-            var responsePayloadData = responseMessage.Payload;
-            var responseMetadata = responseMessage.Frames.ToDictionary(p => p.Key, p => p.Value);
-
-            this.OnDataReceived(responsePayloadData, responseMetadata);
-
-            return new ReceivedData(responsePayloadData, responseMetadata);
+            return message;
         }
 
-        public override async Task<ReceivedTaggedData> ReceiveTagged()
+        public override async Task<TaggedTransportMessage> ReceiveTagged()
         {
             var taggedMessage = await this.GetBufferedTaggedData();
-            var tag = taggedMessage.Tag;
-            var message = taggedMessage.Message;
 
-            var payloadData = message.Payload;
-            var metadata = message.Frames.ToDictionary(p => p.Key, p => p.Value);
+            this.OnMessageReceived(taggedMessage.Message);
 
-            this.OnDataReceived(payloadData, metadata);
-
-            return new ReceivedTaggedData(tag, payloadData, metadata);
+            return taggedMessage;
         }
 
-        public override async Task Send(byte[] data, IDictionary<string, byte[]> metadata)
+        public override async Task Send(TransportMessage message)
         {
             await this.EnsureListening();
 
-            Console.WriteLine("sending");
-            var encodedIdentity = System.Text.Encoding.ASCII.GetBytes(this.Identity);
+            var forwardedMessage = TransportMessage.FromMessage(message);
 
-            var frames = new Dictionary<string, byte[]>();
-            foreach (var key in metadata.Keys)
-                frames.Add(key, metadata[key]);
-
-            var message = new Message(0, frames, data);
-            //this.SendBuffer.Enqueue(message);
-            //this.Socket.SendMultipartMessage(message.ToNetMQMessage(true));
-            this.AltSendBuffer.Enqueue(message);
+            this.AltSendBuffer.Enqueue(forwardedMessage);
         }
-        public override async Task Send(string messageId, byte[] data, IDictionary<string, byte[]> metadata)
+        public override async Task Send(string messageId, TransportMessage message)
         {
             await this.EnsureListening();
 
-            var encodedRid = System.Text.Encoding.ASCII.GetBytes(messageId);
-            var encodedIdentity = System.Text.Encoding.ASCII.GetBytes(this.Identity);
+            var forwardedMessage = TransportMessage.FromMessage(message);
 
-            var frames = new Dictionary<string, byte[]>();
+            var encodedMessageId = System.Text.Encoding.ASCII.GetBytes(messageId);
+            forwardedMessage.Metadata.Add($"rid[{this.Identity}]", encodedMessageId);
 
-            byte[] envelope = null;
-            foreach (var key in metadata.Keys)
-            {
-                switch (key)
-                {
-                    case "envelope":
-                        envelope = metadata[key];
-                        break;
-                    default:
-                        frames.Add(key, metadata[key]);
-                        break;
-                }
-            }
-
-            frames.Add("rid", encodedRid);
-
-            var message = new Message(0, frames, data, envelope);
-
-            this.AltSendBuffer.Enqueue(message);
-            //Console.WriteLine("AltSendBuffer Size: " + this.AltSendBuffer.Count());
+            this.AltSendBuffer.Enqueue(forwardedMessage);
         }
 
-        public override Task<Func<Task<ReceivedData>>> SendAndReceive(byte[] data, IDictionary<string, byte[]> metadata)
+        public override Task<Func<Task<TransportMessage>>> SendAndReceive(TransportMessage message)
         {
             throw new NotImplementedException();
         }
@@ -240,7 +197,7 @@ namespace Axon.ZeroMQ
                     this.IsListening = false;
 
                     using (var socket = new DealerSocket())
-                    using (this.AltSendBuffer = new NetMQQueue<Message>())
+                    using (this.AltSendBuffer = new NetMQQueue<TransportMessage>())
                     using (var poller = new NetMQPoller() { socket, this.AltSendBuffer })
                     using (var monitor = new NetMQ.Monitoring.NetMQMonitor(socket, $"inproc://monitor.dealerserver.{Guid.NewGuid().ToString()}", SocketEvents.Connected | SocketEvents.Disconnected))
                     {
@@ -257,20 +214,18 @@ namespace Axon.ZeroMQ
                                     {
                                         lastActivityTime = DateTime.UtcNow;
 
-                                        var message = netmqMessage.ToMessage(false);
+                                        var message = netmqMessage.ToMessage();
 
                                         byte[] encodedRid;
-                                        if (message.TryPluckFrame("rid", out encodedRid))
+                                        if (message.Metadata.TryPluck($"rid[{this.Identity}]", out encodedRid))
                                         {
                                             var decodedRid = System.Text.Encoding.ASCII.GetString(encodedRid);
 
                                             this.TaggedReceiveBuffer.TryAdd(decodedRid, message);
-                                            //Console.WriteLine("TaggedReceiveBuffer Size: " + this.TaggedReceiveBuffer.Count);
                                         }
                                         else
                                         {
                                             this.ReceiveBuffer.Enqueue(message);
-                                            //Console.WriteLine("ReceiveBuffer Size: " + this.ReceiveBuffer.Count);
                                         }
 
                                         ////var message = netmqMessage.ToMessage(false);
@@ -290,8 +245,9 @@ namespace Axon.ZeroMQ
                                     }
                                     catch (Exception ex)
                                     {
-                                        var forwardedMessage = new Message(1, new Dictionary<string, byte[]>(), System.Text.Encoding.UTF8.GetBytes(ex.Message));
-                                        e.Socket.SendMultipartMessage(forwardedMessage.ToNetMQMessage(true));
+                                        //var forwardedMessage = new Message(1, new Dictionary<string, byte[]>(), System.Text.Encoding.UTF8.GetBytes(ex.Message));
+                                        //e.Socket.SendMultipartMessage(forwardedMessage.ToNetMQMessage(true));
+                                        Console.WriteLine(ex.Message + ": " + ex.StackTrace);
                                     }
                                 }
                             }
@@ -333,12 +289,11 @@ namespace Axon.ZeroMQ
                         {
                             try
                             {
-                                while (this.AltSendBuffer.TryDequeue(out Message message, TimeSpan.Zero))
+                                while (this.AltSendBuffer.TryDequeue(out TransportMessage message, TimeSpan.Zero))
                                 {
                                     lastActivityTime = DateTime.UtcNow;
-                                    //Console.WriteLine("sending out");
 
-                                    if (!socket.TrySendMultipartMessage(TimeSpan.FromSeconds(1), message.ToNetMQMessage(true)))
+                                    if (!socket.TrySendMultipartMessage(TimeSpan.FromSeconds(1), message.ToNetMQMessage()))
                                     {
                                         Console.WriteLine("Failed to send message");
                                     }
@@ -411,7 +366,14 @@ namespace Axon.ZeroMQ
                             //Console.WriteLine($"SENDING GREETING {this.Socket.HasOut}");
                             try
                             {
-                                this.AltSendBuffer.Enqueue(new Message(0, new Dictionary<string, byte[]>() { { "Greeting", new byte[] { 1 } } }, new byte[] { 1 }));
+                                //this.AltSendBuffer.Enqueue(new Message(0, new Dictionary<string, byte[]>() { { "Greeting", new byte[] { 1 } } }, new byte[] { 1 }));
+                                this.AltSendBuffer.Enqueue(new TransportMessage(
+                                    new byte[] { 1 },
+                                    new VolatileTransportMetadata(new List<VolatileTransportMetadataFrame>()
+                                    {
+                                        new VolatileTransportMetadataFrame("Greeting", new byte[] { 1 })
+                                    })
+                                ));
                                 //if (!socket.TrySendMultipartMessage(TimeSpan.FromSeconds(1), new Message(0, new Dictionary<string, byte[]>() { { "Greeting", new byte[] { 1 } } }, new byte[] { 1 }).ToNetMQMessage(true)))
                                 //{
                                 //    Console.WriteLine("Failed to register dealer server");
@@ -448,9 +410,9 @@ namespace Axon.ZeroMQ
         }
 
         private DateTime lastGetBufferedData = DateTime.UtcNow;
-        private async Task<Message> GetBufferedData(int timeout = 0)
+        private async Task<TransportMessage> GetBufferedData(int timeout = 0)
         {
-            Message message;
+            TransportMessage message;
             if (!this.ReceiveBuffer.IsEmpty && this.ReceiveBuffer.TryDequeue(out message))
             {
                 this.lastGetBufferedData = DateTime.UtcNow;
@@ -483,9 +445,9 @@ namespace Axon.ZeroMQ
         }
 
         private DateTime lastGetBufferedTaggedData = DateTime.UtcNow;
-        private async Task<TaggedMessage> GetBufferedTaggedData(int timeout = 0)
+        private async Task<TaggedTransportMessage> GetBufferedTaggedData(int timeout = 0)
         {
-            Message message;
+            TransportMessage message;
             string tag;
 
             tag = this.TaggedReceiveBuffer.Keys.FirstOrDefault();
@@ -494,7 +456,7 @@ namespace Axon.ZeroMQ
                 this.lastGetBufferedTaggedData = DateTime.UtcNow;
                 // Console.WriteLine("Received Tagged Message");
 
-                return new TaggedMessage(tag, message);
+                return new TaggedTransportMessage(tag, message);
             }
             else
             {
@@ -508,7 +470,7 @@ namespace Axon.ZeroMQ
                         this.lastGetBufferedTaggedData = DateTime.UtcNow;
                         // Console.WriteLine("Received Tagged Message");
 
-                        return new TaggedMessage(tag, message);
+                        return new TaggedTransportMessage(tag, message);
                     }
                     else if (timeout > 0 && (DateTime.Now - start).TotalMilliseconds > timeout)
                     {
@@ -522,9 +484,9 @@ namespace Axon.ZeroMQ
                 throw new Exception("Transport stopped");
             }
         }
-        private async Task<Message> GetBufferedTaggedData(string rid, int timeout = 0)
+        private async Task<TransportMessage> GetBufferedTaggedData(string rid, int timeout = 0)
         {
-            Message message;
+            TransportMessage message;
             if (!this.TaggedReceiveBuffer.IsEmpty && this.TaggedReceiveBuffer.TryRemove(rid, out message))
             {
                 this.lastGetBufferedTaggedData = DateTime.UtcNow;
