@@ -279,6 +279,8 @@ namespace Axon.ZeroMQ
 
             var forwardedMessage = TransportMessage.FromMessage(message);
 
+            this.OnMessageSending(forwardedMessage);
+
             this.AltSendBuffer.Enqueue(forwardedMessage);
         }
         public override async Task Send(string messageId, TransportMessage message)
@@ -289,6 +291,8 @@ namespace Axon.ZeroMQ
 
             var encodedMessageId = System.Text.Encoding.ASCII.GetBytes(messageId);
             forwardedMessage.Metadata.Add($"rid[{this.Identity}]", encodedMessageId);
+
+            this.OnMessageSending(forwardedMessage);
 
             this.AltSendBuffer.Enqueue(forwardedMessage);
         }
@@ -348,7 +352,7 @@ namespace Axon.ZeroMQ
 
                                     message.Metadata.Add($"envelope[{this.Identity}]", envelope);
 
-                                    //this.OnDataReceived(message.Payload, message.Frames);
+                                    this.OnMessageReceiving(message);
 
                                     byte[] encodedRid;
                                     if (message.Metadata.TryPluck($"rid[{this.Identity}]", out encodedRid))
@@ -432,6 +436,8 @@ namespace Axon.ZeroMQ
                                     {
                                         Console.WriteLine("Failed to send message");
                                     }
+
+                                    this.OnMessageSent(message);
                                 }
                             }
                             catch (Exception ex)
@@ -728,6 +734,8 @@ namespace Axon.ZeroMQ
 
             var forwardedMessage = TransportMessage.FromMessage(message);
 
+            this.OnMessageSending(forwardedMessage);
+
             this.AltSendBuffer.Enqueue(forwardedMessage);
         }
         public override async Task Send(string messageId, TransportMessage message)
@@ -738,6 +746,8 @@ namespace Axon.ZeroMQ
 
             var encodedMessageId = System.Text.Encoding.ASCII.GetBytes(messageId);
             forwardedMessage.Metadata.Add($"rid[{this.Identity}]", encodedMessageId);
+
+            this.OnMessageSending(forwardedMessage);
 
             this.AltSendBuffer.Enqueue(forwardedMessage);
         }
@@ -777,6 +787,8 @@ namespace Axon.ZeroMQ
 
             var encodedMessageId = System.Text.Encoding.ASCII.GetBytes(messageId);
             forwardedMessage.Metadata.Add($"rid[{this.Identity}]", encodedMessageId);
+
+            this.OnMessageSending(forwardedMessage);
 
             this.AltSendBuffer.Enqueue(forwardedMessage);
 
@@ -819,7 +831,7 @@ namespace Axon.ZeroMQ
 
                                     var message = netmqMessage.ToMessage();
 
-                                    //this.OnDataReceived(message.Payload, message.Frames);
+                                    this.OnMessageReceiving(message);
 
                                     byte[] encodedRid;
                                     if (message.Metadata.TryPluck($"rid[{this.Identity}]", out encodedRid))
@@ -902,6 +914,8 @@ namespace Axon.ZeroMQ
                                     {
                                         Console.WriteLine("Failed to send message");
                                     }
+
+                                    this.OnMessageSent(message);
                                 }
                             }
                             catch (Exception ex)
