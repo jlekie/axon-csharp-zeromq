@@ -23,14 +23,14 @@ namespace Axon.ZeroMQ
         private readonly IDiscoverer<IZeroMQClientEndpoint> discoverer;
         public IDiscoverer<IZeroMQClientEndpoint> Discoverer => discoverer;
 
-        private readonly string identity;
-        public string Identity
-        {
-            get
-            {
-                return identity;
-            }
-        }
+        //private readonly string identity;
+        //public string Identity
+        //{
+        //    get
+        //    {
+        //        return identity;
+        //    }
+        //}
 
         private readonly int idleTimeout;
         public int IdleTimeout
@@ -65,7 +65,7 @@ namespace Axon.ZeroMQ
         {
             this.endpoint = endpoint;
 
-            this.identity = Guid.NewGuid().ToString().Replace("-", "").ToLowerInvariant();
+            //this.identity = Guid.NewGuid().ToString().Replace("-", "").ToLowerInvariant();
             this.idleTimeout = idleTimeout;
 
             this.receiveBuffer = new ConcurrentQueue<TransportMessage>();
@@ -79,7 +79,7 @@ namespace Axon.ZeroMQ
         {
             this.discoverer = discoverer;
 
-            this.identity = Guid.NewGuid().ToString().Replace("-", "").ToLowerInvariant();
+            //this.identity = Guid.NewGuid().ToString().Replace("-", "").ToLowerInvariant();
             this.idleTimeout = idleTimeout;
 
             this.receiveBuffer = new ConcurrentQueue<TransportMessage>();

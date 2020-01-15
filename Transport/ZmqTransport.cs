@@ -225,14 +225,14 @@ namespace Axon.ZeroMQ
             }
         }
 
-        private readonly string identity;
-        public string Identity
-        {
-            get
-            {
-                return identity;
-            }
-        }
+        //private readonly string identity;
+        //public string Identity
+        //{
+        //    get
+        //    {
+        //        return identity;
+        //    }
+        //}
 
         private readonly ConcurrentQueue<TransportMessage> ReceiveBuffer;
         private readonly ConcurrentDictionary<string, TransportMessage> TaggedReceiveBuffer;
@@ -244,10 +244,11 @@ namespace Axon.ZeroMQ
         private NetMQQueue<TransportMessage> AltSendBuffer;
 
         public RouterServerTransport(IZeroMQServerEndpoint endpoint)
+            : base()
         {
             this.endpoint = endpoint;
 
-            this.identity = Guid.NewGuid().ToString().Replace("-", "").ToLowerInvariant();
+            //this.identity = Guid.NewGuid().ToString().Replace("-", "").ToLowerInvariant();
 
             this.ReceiveBuffer = new ConcurrentQueue<TransportMessage>();
             this.TaggedReceiveBuffer = new ConcurrentDictionary<string, TransportMessage>();
@@ -649,14 +650,14 @@ namespace Axon.ZeroMQ
             }
         }
 
-        private readonly string identity;
-        public string Identity
-        {
-            get
-            {
-                return this.identity;
-            }
-        }
+        //private readonly string identity;
+        //public string Identity
+        //{
+        //    get
+        //    {
+        //        return this.identity;
+        //    }
+        //}
 
         private readonly int idleTimeout;
         public int IdleTimeout
@@ -676,10 +677,11 @@ namespace Axon.ZeroMQ
         private NetMQQueue<TransportMessage> AltSendBuffer;
 
         public DealerClientTransport(IZeroMQClientEndpoint endpoint, int idleTimeout = 0)
+            : base()
         {
             this.endpoint = endpoint;
 
-            this.identity = Guid.NewGuid().ToString().Replace("-", "").ToLowerInvariant();
+            //this.identity = Guid.NewGuid().ToString().Replace("-", "").ToLowerInvariant();
             this.idleTimeout = idleTimeout;
 
             this.ReceiveBuffer = new ConcurrentQueue<TransportMessage>();
@@ -687,10 +689,11 @@ namespace Axon.ZeroMQ
             //this.SendBuffer = new ConcurrentQueue<Message>();
         }
         public DealerClientTransport(IDiscoverer<IZeroMQClientEndpoint> discoverer, int idleTimeout = 0)
+            : base()
         {
             this.discoverer = discoverer;
 
-            this.identity = Guid.NewGuid().ToString().Replace("-", "").ToLowerInvariant();
+            //this.identity = Guid.NewGuid().ToString().Replace("-", "").ToLowerInvariant();
             this.idleTimeout = idleTimeout;
 
             this.ReceiveBuffer = new ConcurrentQueue<TransportMessage>();
