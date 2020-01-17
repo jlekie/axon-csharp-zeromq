@@ -23,6 +23,12 @@ namespace Axon.ZeroMQ
 
     public interface IRouterDevice
     {
+        event EventHandler<MessagingEventArgs> FrontendReceived;
+        event EventHandler<MessagingEventArgs> FrontendForwarded;
+
+        event EventHandler<MessagingEventArgs> BackendReceived;
+        event EventHandler<MessagingEventArgs> BackendForwarded;
+
         string Identity { get; }
 
         IZeroMQServerEndpoint FrontendEndpoint { get; }
@@ -31,6 +37,12 @@ namespace Axon.ZeroMQ
 
     public class RouterDevice : IRouterDevice
     {
+        public event EventHandler<MessagingEventArgs> FrontendReceived;
+        public event EventHandler<MessagingEventArgs> FrontendForwarded;
+
+        public event EventHandler<MessagingEventArgs> BackendReceived;
+        public event EventHandler<MessagingEventArgs> BackendForwarded;
+
         private readonly string identity;
         public string Identity
         {
@@ -149,6 +161,8 @@ namespace Axon.ZeroMQ
 
                                     var message = netmqMessage.ToMessage(out var envelope);
 
+                                    this.OnFrontendReceived(message);
+
                                     //this.receiveCount++;
                                     //Console.WriteLine("RECEIVED " + this.receiveCount);
 
@@ -254,6 +268,8 @@ namespace Axon.ZeroMQ
                                 {
                                     if (!message.Metadata.TryPluck($"envelope[{this.Identity}]", out var envelope))
                                         throw new Exception("Message envelope not found");
+
+                                    this.OnBackendForwarded(message);
 
                                     if (!frontendSocket.TrySendMultipartMessage(TimeSpan.FromSeconds(1), message.ToNetMQMessage(envelope)))
                                     {
@@ -362,6 +378,8 @@ namespace Axon.ZeroMQ
                                 {
                                     var message = netmqMessage.ToMessage(out var envelope);
 
+                                    this.OnBackendReceived(message);
+
                                     //this.BackendBuffer.Enqueue(message);
 
                                     if (message.Metadata.TryPluck("Greeting", out var encodedGreeting))
@@ -429,6 +447,8 @@ namespace Axon.ZeroMQ
                                 {
                                     if (!message.Metadata.TryPluck($"backendEnvelope[{this.Identity}]", out var envelope))
                                         throw new Exception("Message backend envelope not found");
+
+                                    this.OnFrontendForwarded(message);
 
                                     if (!backendSocket.TrySendMultipartMessage(TimeSpan.FromSeconds(1), message.ToNetMQMessage(envelope)))
                                     {
@@ -511,6 +531,24 @@ namespace Axon.ZeroMQ
                     Console.WriteLine(ex.Message + ": " + ex.StackTrace);
                 }
             }
+        }
+
+        protected virtual void OnFrontendReceived(TransportMessage message)
+        {
+            this.FrontendReceived?.Invoke(this, new MessagingEventArgs(message));
+        }
+        protected virtual void OnFrontendForwarded(TransportMessage message)
+        {
+            this.FrontendForwarded?.Invoke(this, new MessagingEventArgs(message));
+        }
+
+        protected virtual void OnBackendReceived(TransportMessage message)
+        {
+            this.BackendReceived?.Invoke(this, new MessagingEventArgs(message));
+        }
+        protected virtual void OnBackendForwarded(TransportMessage message)
+        {
+            this.BackendForwarded?.Invoke(this, new MessagingEventArgs(message));
         }
     }
 }

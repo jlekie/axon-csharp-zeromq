@@ -90,6 +90,8 @@ namespace Axon.ZeroMQ
                                     {
                                         var message = netmqMessage.ToMessage();
 
+                                        this.ForwarderDevice.OnBackendReceived(message);
+
                                         this.ForwarderDevice.frontendBuffer.Enqueue(message);
                                     }
                                 }
@@ -105,6 +107,8 @@ namespace Axon.ZeroMQ
                                 {
                                     while (this.BackendBuffer.TryDequeue(out TransportMessage message, TimeSpan.Zero))
                                     {
+                                        this.ForwarderDevice.OnFrontendForwarded(message);
+
                                         if (!socket.TrySendMultipartMessage(TimeSpan.FromSeconds(1), message.ToNetMQMessage()))
                                         {
                                             Console.WriteLine("Failed to send message");
@@ -179,6 +183,12 @@ namespace Axon.ZeroMQ
                 }
             }
         }
+
+        public event EventHandler<MessagingEventArgs> FrontendReceived;
+        public event EventHandler<MessagingEventArgs> FrontendForwarded;
+
+        public event EventHandler<MessagingEventArgs> BackendReceived;
+        public event EventHandler<MessagingEventArgs> BackendForwarded;
 
         private readonly string identity;
         public string Identity => identity;
@@ -259,6 +269,8 @@ namespace Axon.ZeroMQ
                                     var message = netmqMessage.ToMessage(out var envelope);
                                     //var sourceEnvelope = message.Envelope;
 
+                                    this.OnFrontendReceived(message);
+
                                     var forwardStart = DateTime.UtcNow;
                                     RegisteredBackend registeredBackend = null;
                                     while (this.IsRunning && registeredBackend == null)
@@ -332,6 +344,8 @@ namespace Axon.ZeroMQ
                                 {
                                     if (!message.Metadata.TryPluck($"envelope[{this.Identity}]", out var envelope))
                                         throw new Exception("Message envelope not found");
+
+                                    this.OnBackendForwarded(message);
 
                                     if (!frontendSocket.TrySendMultipartMessage(TimeSpan.FromSeconds(1), message.ToNetMQMessage(envelope)))
                                     {
@@ -453,6 +467,24 @@ namespace Axon.ZeroMQ
 
                 await Task.Delay(5000);
             }
+        }
+
+        protected virtual void OnFrontendReceived(TransportMessage message)
+        {
+            this.FrontendReceived?.Invoke(this, new MessagingEventArgs(message));
+        }
+        protected virtual void OnFrontendForwarded(TransportMessage message)
+        {
+            this.FrontendForwarded?.Invoke(this, new MessagingEventArgs(message));
+        }
+
+        protected virtual void OnBackendReceived(TransportMessage message)
+        {
+            this.BackendReceived?.Invoke(this, new MessagingEventArgs(message));
+        }
+        protected virtual void OnBackendForwarded(TransportMessage message)
+        {
+            this.BackendForwarded?.Invoke(this, new MessagingEventArgs(message));
         }
     }
 
