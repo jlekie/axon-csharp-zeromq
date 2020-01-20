@@ -150,6 +150,19 @@ namespace Axon.ZeroMQ
 
     public class TcpClientEndpoint : AZeroMQClientEndpoint, IZeroMQEndpoint
     {
+        public static TcpClientEndpoint FromUrl(string url)
+        {
+            var uri = new Uri(url);
+            switch (uri.Scheme.ToLowerInvariant())
+            {
+                case "zmq":
+                case "tcp":
+                    return new TcpClientEndpoint(uri.Host, uri.Port);
+                default:
+                    throw new Exception("Invalid scheme type " + uri.Scheme);
+            }
+        }
+
         private readonly string hostname;
         public string Hostname
         {
