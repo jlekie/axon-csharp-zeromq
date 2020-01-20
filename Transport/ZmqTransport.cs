@@ -214,8 +214,32 @@ namespace Axon.ZeroMQ
         IZeroMQClientEndpoint Endpoint { get; }
     }
 
+    public class ConnectionTimeoutException : Exception
+    {
+        public ConnectionTimeoutException()
+        {
+        }
+        public ConnectionTimeoutException(string message)
+            : base(message)
+        {
+        }
+    }
+
+    public class HandlerErrorEventArgs : EventArgs
+    {
+        public Exception Exception { get; private set; }
+
+        public HandlerErrorEventArgs(Exception exception)
+            : base()
+        {
+            this.Exception = exception;
+        }
+    }
+
     public class RouterServerTransport : AServerTransport, IRouterServerTransport
     {
+        public event EventHandler<HandlerErrorEventArgs> HandlerError;
+
         private readonly IZeroMQServerEndpoint endpoint;
         public IZeroMQServerEndpoint Endpoint
         {
@@ -370,7 +394,8 @@ namespace Axon.ZeroMQ
                             }
                             catch (Exception ex)
                             {
-                                Console.WriteLine(ex.Message + ": " + ex.StackTrace);
+                                this.OnHandlerError(ex);
+                                //Console.WriteLine(ex.Message + ": " + ex.StackTrace);
                             }
                         };
 
@@ -443,7 +468,8 @@ namespace Axon.ZeroMQ
                             }
                             catch (Exception ex)
                             {
-                                Console.WriteLine(ex.Message + ": " + ex.StackTrace);
+                                this.OnHandlerError(ex);
+                                //Console.WriteLine(ex.Message + ": " + ex.StackTrace);
                             }
                         };
 
@@ -459,15 +485,16 @@ namespace Axon.ZeroMQ
                         };
 
                         Console.WriteLine($"Attempting to bind socket to {endpoint.ToConnectionString()}");
-                        monitor.StartAsync();
+                        var monitorTask = monitor.StartAsync();
                         monitor.AttachToPoller(poller);
 
                         var pollerTask = new Task(poller.Run);
-                        pollerTask.ContinueWith((Task task) =>
+                        var pollerHandlerTask = pollerTask.ContinueWith((Task task) =>
                         {
                             var ex = task.Exception;
 
-                            Console.WriteLine(ex.Message + ": " + ex.StackTrace);
+                            this.OnHandlerError(ex);
+                            //Console.WriteLine(ex.Message + ": " + ex.StackTrace);
                             this.IsListening = false;
                         }, TaskContinuationOptions.OnlyOnFaulted);
                         pollerTask.Start();
@@ -501,7 +528,8 @@ namespace Axon.ZeroMQ
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine(ex.Message + ": " + ex.StackTrace);
+                    this.OnHandlerError(ex);
+                    //Console.WriteLine(ex.Message + ": " + ex.StackTrace);
                 }
             }
         }
@@ -628,10 +656,17 @@ namespace Axon.ZeroMQ
                 await this.Listen();
             }
         }
+
+        protected virtual void OnHandlerError(Exception ex)
+        {
+            this.HandlerError?.Invoke(this, new HandlerErrorEventArgs(ex));
+        }
     }
 
     public class DealerClientTransport : AClientTransport, IDealerClientTransport
     {
+        public event EventHandler<HandlerErrorEventArgs> HandlerError;
+
         private readonly IZeroMQClientEndpoint endpoint;
         public IZeroMQClientEndpoint Endpoint
         {
@@ -851,7 +886,8 @@ namespace Axon.ZeroMQ
                             }
                             catch (Exception ex)
                             {
-                                Console.WriteLine(ex.Message + ": " + ex.StackTrace);
+                                this.OnHandlerError(ex);
+                                //Console.WriteLine(ex.Message + ": " + ex.StackTrace);
                             }
                         };
 
@@ -923,7 +959,8 @@ namespace Axon.ZeroMQ
                             }
                             catch (Exception ex)
                             {
-                                Console.WriteLine(ex.Message + ": " + ex.StackTrace);
+                                this.OnHandlerError(ex);
+                                //Console.WriteLine(ex.Message + ": " + ex.StackTrace);
                             }
                         };
 
@@ -941,15 +978,16 @@ namespace Axon.ZeroMQ
                         };
 
                         Console.WriteLine($"Attempting to connect to {endpoint.ToConnectionString()}");
-                        monitor.StartAsync();
+                        var monitorTask = monitor.StartAsync();
                         monitor.AttachToPoller(poller);
 
                         var pollerTask = new Task(poller.Run);
-                        pollerTask.ContinueWith((Task task) =>
+                        var pollerHandlerTask = pollerTask.ContinueWith((Task task) =>
                         {
                             var ex = task.Exception;
 
-                            Console.WriteLine(ex.Message + ": " + ex.StackTrace);
+                            this.OnHandlerError(ex);
+                            //Console.WriteLine(ex.Message + ": " + ex.StackTrace);
                             this.IsConnected = false;
                         }, TaskContinuationOptions.OnlyOnFaulted);
                         pollerTask.Start();
@@ -996,9 +1034,13 @@ namespace Axon.ZeroMQ
                     if (this.IsRunning)
                         await Task.Delay(1000);
                 }
+                //catch (ConnectionTimeoutException ex)
+                //{
+                //}
                 catch (Exception ex)
                 {
-                    Console.WriteLine(ex.Message + ": " + ex.StackTrace);
+                    this.OnHandlerError(ex);
+                    //Console.WriteLine(ex.Message + ": " + ex.StackTrace);
                 }
             }
         }
@@ -1136,8 +1178,13 @@ namespace Axon.ZeroMQ
         {
             if (!this.IsConnected)
             {
-                await this.Connect();
+                await this.Connect(5000);
             }
+        }
+
+        protected virtual void OnHandlerError(Exception ex)
+        {
+            this.HandlerError?.Invoke(this, new HandlerErrorEventArgs(ex));
         }
     }
 
