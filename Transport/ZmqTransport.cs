@@ -262,7 +262,7 @@ namespace Axon.ZeroMQ
         //    }
         //}
 
-        private readonly ConcurrentQueue<TransportMessage> ReceiveBuffer;
+        private readonly BlockingCollection<TransportMessage> ReceiveBuffer;
         private readonly ConcurrentDictionary<string, TransportMessage> TaggedReceiveBuffer;
         //private readonly ConcurrentQueue<Message> SendBuffer;
 
@@ -278,7 +278,7 @@ namespace Axon.ZeroMQ
 
             //this.identity = Guid.NewGuid().ToString().Replace("-", "").ToLowerInvariant();
 
-            this.ReceiveBuffer = new ConcurrentQueue<TransportMessage>();
+            this.ReceiveBuffer = new BlockingCollection<TransportMessage>();
             this.TaggedReceiveBuffer = new ConcurrentDictionary<string, TransportMessage>();
             //this.SendBuffer = new ConcurrentQueue<Message>();
         }
@@ -328,7 +328,7 @@ namespace Axon.ZeroMQ
 
         public override async Task<TransportMessage> Receive()
         {
-            var message = await this.GetBufferedData();
+            var message = this.GetBufferedData();
 
             this.OnMessageReceived(message);
 
@@ -392,7 +392,7 @@ namespace Axon.ZeroMQ
                                     }
                                     else
                                     {
-                                        this.ReceiveBuffer.Enqueue(message);
+                                        this.ReceiveBuffer.Add(message);
                                     }
                                 }
                             }
@@ -539,42 +539,44 @@ namespace Axon.ZeroMQ
         }
 
         private DateTime lastGetBufferedData = DateTime.UtcNow;
-        private async Task<TransportMessage> GetBufferedData(int timeout = 0)
+        private TransportMessage GetBufferedData()
         {
-            TransportMessage message;
-            if (!this.ReceiveBuffer.IsEmpty && this.ReceiveBuffer.TryDequeue(out message))
-            {
-                this.lastGetBufferedData = DateTime.UtcNow;
-                // Console.WriteLine("Getting Message");
-                // MessageHelpers.WriteMessage(message);
+            return this.ReceiveBuffer.Take();
 
-                return message;
-            }
-            else
-            {
-                var start = DateTime.Now;
+            //TransportMessage message;
+            //if (!this.ReceiveBuffer.IsEmpty && this.ReceiveBuffer.TryDequeue(out message))
+            //{
+            //    this.lastGetBufferedData = DateTime.UtcNow;
+            //    // Console.WriteLine("Getting Message");
+            //    // MessageHelpers.WriteMessage(message);
 
-                while (this.IsRunning)
-                {
-                    if (!this.ReceiveBuffer.IsEmpty && this.ReceiveBuffer.TryDequeue(out message))
-                    {
-                        this.lastGetBufferedData = DateTime.UtcNow;
-                        // Console.WriteLine("Getting Message");
-                        // MessageHelpers.WriteMessage(message);
+            //    return message;
+            //}
+            //else
+            //{
+            //    var start = DateTime.Now;
 
-                        return message;
-                    }
-                    else if (timeout > 0 && (DateTime.Now - start).TotalMilliseconds > timeout)
-                    {
-                        throw new Exception("Message timeout");
-                    }
+            //    while (this.IsRunning)
+            //    {
+            //        if (!this.ReceiveBuffer.IsEmpty && this.ReceiveBuffer.TryDequeue(out message))
+            //        {
+            //            this.lastGetBufferedData = DateTime.UtcNow;
+            //            // Console.WriteLine("Getting Message");
+            //            // MessageHelpers.WriteMessage(message);
 
-                    if ((DateTime.UtcNow - this.lastGetBufferedData).TotalSeconds > 1)
-                        await Task.Delay(1);
-                }
+            //            return message;
+            //        }
+            //        else if (timeout > 0 && (DateTime.Now - start).TotalMilliseconds > timeout)
+            //        {
+            //            throw new Exception("Message timeout");
+            //        }
 
-                throw new Exception("Transport stopped");
-            }
+            //        if ((DateTime.UtcNow - this.lastGetBufferedData).TotalSeconds > 1)
+            //            await Task.Delay(1);
+            //    }
+
+            //    throw new Exception("Transport stopped");
+            //}
         }
 
         private DateTime lastGetBufferedTaggedData = DateTime.UtcNow;
@@ -707,8 +709,8 @@ namespace Axon.ZeroMQ
             }
         }
 
-        private readonly ConcurrentQueue<TransportMessage> ReceiveBuffer;
-        private readonly ConcurrentDictionary<string, TransportMessage> TaggedReceiveBuffer;
+        private readonly BlockingCollection<TransportMessage> ReceiveBuffer;
+        private readonly ConcurrentDictionary<string, BlockingCollection<TransportMessage>> TaggedReceiveBuffer;
         //private readonly ConcurrentQueue<Message> SendBuffer;
 
         private Task ListeningTask;
@@ -723,8 +725,8 @@ namespace Axon.ZeroMQ
             //this.identity = Guid.NewGuid().ToString().Replace("-", "").ToLowerInvariant();
             this.idleTimeout = idleTimeout;
 
-            this.ReceiveBuffer = new ConcurrentQueue<TransportMessage>();
-            this.TaggedReceiveBuffer = new ConcurrentDictionary<string, TransportMessage>();
+            this.ReceiveBuffer = new BlockingCollection<TransportMessage>();
+            this.TaggedReceiveBuffer = new ConcurrentDictionary<string, BlockingCollection<TransportMessage>>();
             //this.SendBuffer = new ConcurrentQueue<Message>();
         }
         public DealerClientTransport(IDiscoverer<IZeroMQClientEndpoint> discoverer, int idleTimeout = 0)
@@ -735,8 +737,8 @@ namespace Axon.ZeroMQ
             //this.identity = Guid.NewGuid().ToString().Replace("-", "").ToLowerInvariant();
             this.idleTimeout = idleTimeout;
 
-            this.ReceiveBuffer = new ConcurrentQueue<TransportMessage>();
-            this.TaggedReceiveBuffer = new ConcurrentDictionary<string, TransportMessage>();
+            this.ReceiveBuffer = new BlockingCollection<TransportMessage>();
+            this.TaggedReceiveBuffer = new ConcurrentDictionary<string, BlockingCollection<TransportMessage>>();
             //this.SendBuffer = new ConcurrentQueue<Message>();
         }
 
@@ -796,7 +798,7 @@ namespace Axon.ZeroMQ
 
         public override async Task<TransportMessage> Receive()
         {
-            var message = await this.GetBufferedData(30000);
+            var message = this.GetBufferedData();
 
             this.OnMessageReceived(message);
 
@@ -804,7 +806,7 @@ namespace Axon.ZeroMQ
         }
         public override async Task<TransportMessage> Receive(string messageId)
         {
-            var message = await this.GetBufferedTaggedData(messageId, 30000);
+            var message = this.GetBufferedTaggedData(messageId);
 
             this.OnMessageReceived(message);
 
@@ -835,7 +837,7 @@ namespace Axon.ZeroMQ
             this.AltSendBuffer.Enqueue(forwardedMessage);
 
             return new Func<Task<TransportMessage>>(async () => {
-                var responseMessage = await this.GetBufferedTaggedData(messageId, 30000);
+                var responseMessage = this.GetBufferedTaggedData(messageId);
 
                 this.OnMessageReceived(responseMessage);
 
@@ -880,11 +882,15 @@ namespace Axon.ZeroMQ
                                     {
                                         var decodedRid = Encoding.ASCII.GetString(encodedRid);
 
-                                        this.TaggedReceiveBuffer.TryAdd(decodedRid, message);
+                                        this.TaggedReceiveBuffer.AddOrUpdate(decodedRid, new BlockingCollection<TransportMessage>(), (key, receiveBuffer) =>
+                                        {
+                                            receiveBuffer.Add(message);
+                                            return receiveBuffer;
+                                        });
                                     }
                                     else
                                     {
-                                        this.ReceiveBuffer.Enqueue(message);
+                                        this.ReceiveBuffer.Add(message);
                                     }
                                 }
                             }
@@ -1056,118 +1062,128 @@ namespace Axon.ZeroMQ
         }
 
         private DateTime lastGetBufferedData = DateTime.UtcNow;
-        private async Task<TransportMessage> GetBufferedData(int timeout = 0)
+        private TransportMessage GetBufferedData()
         {
-            TransportMessage message;
-            if (!this.ReceiveBuffer.IsEmpty && this.ReceiveBuffer.TryDequeue(out message))
-            {
-                this.lastGetBufferedData = DateTime.UtcNow;
-                // Console.WriteLine("Received Message");
-                // MessageHelpers.WriteMessage(message);
+            return this.ReceiveBuffer.Take();
 
-                return message;
-            }
-            else
-            {
-                var start = DateTime.Now;
+            //TransportMessage message;
+            //if (!this.ReceiveBuffer.IsEmpty && this.ReceiveBuffer.TryDequeue(out message))
+            //{
+            //    this.lastGetBufferedData = DateTime.UtcNow;
+            //    // Console.WriteLine("Received Message");
+            //    // MessageHelpers.WriteMessage(message);
 
-                while (this.IsRunning)
-                {
-                    if (!this.ReceiveBuffer.IsEmpty && this.ReceiveBuffer.TryDequeue(out message))
-                    {
-                        this.lastGetBufferedData = DateTime.UtcNow;
-                        // Console.WriteLine("Received Message");
-                        // MessageHelpers.WriteMessage(message);
+            //    return message;
+            //}
+            //else
+            //{
+            //    var start = DateTime.Now;
 
-                        return message;
-                    }
-                    else if (timeout > 0 && (DateTime.Now - start).TotalMilliseconds > timeout)
-                    {
-                        throw new Exception("Message timeout");
-                    }
+            //    while (this.IsRunning)
+            //    {
+            //        if (!this.ReceiveBuffer.IsEmpty && this.ReceiveBuffer.TryDequeue(out message))
+            //        {
+            //            this.lastGetBufferedData = DateTime.UtcNow;
+            //            // Console.WriteLine("Received Message");
+            //            // MessageHelpers.WriteMessage(message);
 
-                    if ((DateTime.UtcNow - this.lastGetBufferedData).TotalSeconds > 1)
-                        await Task.Delay(1);
-                }
+            //            return message;
+            //        }
+            //        else if (timeout > 0 && (DateTime.Now - start).TotalMilliseconds > timeout)
+            //        {
+            //            throw new Exception("Message timeout");
+            //        }
 
-                throw new Exception("Transport stopped");
-            }
+            //        if ((DateTime.UtcNow - this.lastGetBufferedData).TotalSeconds > 1)
+            //            await Task.Delay(1);
+            //    }
+
+            //    throw new Exception("Transport stopped");
+            //}
         }
 
         private DateTime lastGetBufferedTaggedData = DateTime.UtcNow;
         private async Task<TaggedTransportMessage> GetBufferedTaggedData(int timeout = 0)
         {
-            TransportMessage message;
-            string tag;
+            throw new NotImplementedException();
 
-            tag = this.TaggedReceiveBuffer.Keys.FirstOrDefault();
-            if (!this.TaggedReceiveBuffer.IsEmpty && this.TaggedReceiveBuffer.TryRemove(tag, out message))
-            {
-                this.lastGetBufferedTaggedData = DateTime.UtcNow;
-                // Console.WriteLine("Received Tagged Message");
+            //TransportMessage message;
+            //string tag;
 
-                return new TaggedTransportMessage(tag, message);
-            }
-            else
-            {
-                var start = DateTime.Now;
+            //tag = this.TaggedReceiveBuffer.Keys.FirstOrDefault();
+            //if (!this.TaggedReceiveBuffer.IsEmpty && this.TaggedReceiveBuffer.TryRemove(tag, out message))
+            //{
+            //    this.lastGetBufferedTaggedData = DateTime.UtcNow;
+            //    // Console.WriteLine("Received Tagged Message");
 
-                while (this.IsRunning)
-                {
-                    tag = this.TaggedReceiveBuffer.Keys.FirstOrDefault();
-                    if (!this.TaggedReceiveBuffer.IsEmpty && this.TaggedReceiveBuffer.TryRemove(tag, out message))
-                    {
-                        this.lastGetBufferedTaggedData = DateTime.UtcNow;
-                        // Console.WriteLine("Received Tagged Message");
+            //    return new TaggedTransportMessage(tag, message);
+            //}
+            //else
+            //{
+            //    var start = DateTime.Now;
 
-                        return new TaggedTransportMessage(tag, message);
-                    }
-                    else if (timeout > 0 && (DateTime.Now - start).TotalMilliseconds > timeout)
-                    {
-                        throw new Exception("Tagged message timeout");
-                    }
+            //    while (this.IsRunning)
+            //    {
+            //        tag = this.TaggedReceiveBuffer.Keys.FirstOrDefault();
+            //        if (!this.TaggedReceiveBuffer.IsEmpty && this.TaggedReceiveBuffer.TryRemove(tag, out message))
+            //        {
+            //            this.lastGetBufferedTaggedData = DateTime.UtcNow;
+            //            // Console.WriteLine("Received Tagged Message");
 
-                    if ((DateTime.UtcNow - this.lastGetBufferedTaggedData).TotalSeconds > 1)
-                        await Task.Delay(1);
-                }
+            //            return new TaggedTransportMessage(tag, message);
+            //        }
+            //        else if (timeout > 0 && (DateTime.Now - start).TotalMilliseconds > timeout)
+            //        {
+            //            throw new Exception("Tagged message timeout");
+            //        }
 
-                throw new Exception("Transport stopped");
-            }
+            //        if ((DateTime.UtcNow - this.lastGetBufferedTaggedData).TotalSeconds > 1)
+            //            await Task.Delay(1);
+            //    }
+
+            //    throw new Exception("Transport stopped");
+            //}
         }
-        private async Task<TransportMessage> GetBufferedTaggedData(string rid, int timeout = 0)
+        private TransportMessage GetBufferedTaggedData(string rid)
         {
-            TransportMessage message;
-            if (!this.TaggedReceiveBuffer.IsEmpty && this.TaggedReceiveBuffer.TryRemove(rid, out message))
-            {
-                this.lastGetBufferedTaggedData = DateTime.UtcNow;
-                // Console.WriteLine("Received Tagged Message");
+            var receiveBuffer = this.TaggedReceiveBuffer.GetOrAdd(rid, new BlockingCollection<TransportMessage>());
 
-                return message;
-            }
-            else
-            {
-                var start = DateTime.Now;
+            var data = receiveBuffer.Take();
 
-                while (this.IsRunning)
-                {
-                    if (!this.TaggedReceiveBuffer.IsEmpty && this.TaggedReceiveBuffer.TryRemove(rid, out message))
-                    {
-                        this.lastGetBufferedTaggedData = DateTime.UtcNow;
-                        // Console.WriteLine("Received Tagged Message");
+            return data;
 
-                        return message;
-                    }
-                    else if (timeout > 0 && (DateTime.Now - start).TotalMilliseconds > timeout)
-                    {
-                        throw new Exception("Tagged message timeout");
-                    }
+            //TransportMessage message;
+            //if (!this.TaggedReceiveBuffer.IsEmpty && this.TaggedReceiveBuffer.TryRemove(rid, out message))
+            //{
+            //    this.lastGetBufferedTaggedData = DateTime.UtcNow;
+            //    // Console.WriteLine("Received Tagged Message");
 
-                    if ((DateTime.UtcNow - this.lastGetBufferedTaggedData).TotalSeconds > 1)
-                        await Task.Delay(1);
-                }
+            //    return message;
+            //}
+            //else
+            //{
+            //    var start = DateTime.Now;
 
-                throw new Exception("Transport stopped");
-            }
+            //    while (this.IsRunning)
+            //    {
+            //        if (!this.TaggedReceiveBuffer.IsEmpty && this.TaggedReceiveBuffer.TryRemove(rid, out message))
+            //        {
+            //            this.lastGetBufferedTaggedData = DateTime.UtcNow;
+            //            // Console.WriteLine("Received Tagged Message");
+
+            //            return message;
+            //        }
+            //        else if (timeout > 0 && (DateTime.Now - start).TotalMilliseconds > timeout)
+            //        {
+            //            throw new Exception("Tagged message timeout");
+            //        }
+
+            //        if ((DateTime.UtcNow - this.lastGetBufferedTaggedData).TotalSeconds > 1)
+            //            await Task.Delay(1);
+            //    }
+
+            //    throw new Exception("Transport stopped");
+            //}
         }
 
         private async Task<IZeroMQClientEndpoint> ResolveEndpoint(int timeout = 0)
