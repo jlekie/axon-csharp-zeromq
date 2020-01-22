@@ -10,10 +10,23 @@ using NetMQ.Sockets;
 
 namespace Axon.ZeroMQ
 {
+    public class SidecarBackendDiscoverer
+    {
+        public readonly string Name;
+        public readonly IDiscoverer<IZeroMQClientEndpoint> Discoverer;
+
+        public SidecarBackendDiscoverer(string name, IDiscoverer<IZeroMQClientEndpoint> discoverer)
+        {
+            this.Name = name;
+            this.Discoverer = discoverer;
+        }
+    }
+
     public class SidecarDevice
     {
         private class RegisteredBackend
         {
+            public string ServiceName { get; private set; }
             public IZeroMQClientEndpoint Endpoint { get; private set; }
             public DateTime RegisteredDate { get; private set; }
 
@@ -26,8 +39,9 @@ namespace Axon.ZeroMQ
 
             private Task HandlerTask;
 
-            public RegisteredBackend(IZeroMQClientEndpoint endpoint, SidecarDevice forwarderDevice)
+            public RegisteredBackend(string serviceName, IZeroMQClientEndpoint endpoint, SidecarDevice forwarderDevice)
             {
+                this.ServiceName = serviceName;
                 this.Endpoint = endpoint;
                 this.ForwarderDevice = forwarderDevice;
 
@@ -153,7 +167,7 @@ namespace Axon.ZeroMQ
                             {
                                 if ((DateTime.Now - start).TotalMilliseconds > 5000)
                                 {
-                                    throw new Exception("Connection timeout");
+                                    throw new Exception($"Connection timeout [{this.ServiceName}]");
                                 }
 
                                 await Task.Delay(1000);
@@ -196,8 +210,8 @@ namespace Axon.ZeroMQ
         private readonly IZeroMQServerEndpoint frontendEndpoint;
         public IZeroMQServerEndpoint FrontendEndpoint => frontendEndpoint;
 
-        private readonly Dictionary<string, IDiscoverer<IZeroMQClientEndpoint>> backendDiscoverers;
-        public Dictionary<string, IDiscoverer<IZeroMQClientEndpoint>> BackendDiscoverers => backendDiscoverers;
+        private readonly SidecarBackendDiscoverer[] backendDiscoverers;
+        public SidecarBackendDiscoverer[] BackendDiscoverers => backendDiscoverers;
 
         private bool isRunning = false;
         public bool IsRunning => isRunning;
@@ -207,7 +221,7 @@ namespace Axon.ZeroMQ
         private ConcurrentDictionary<string, ConcurrentQueue<string>> backendEndpointIds;
         private ConcurrentDictionary<string, RegisteredBackend> backendEndpoints;
 
-        public SidecarDevice(IZeroMQServerEndpoint endpoint, Dictionary<string, IDiscoverer<IZeroMQClientEndpoint>> backendDiscoverers)
+        public SidecarDevice(IZeroMQServerEndpoint endpoint, SidecarBackendDiscoverer[] backendDiscoverers)
             : base()
         {
             this.frontendEndpoint = endpoint;
@@ -269,50 +283,40 @@ namespace Axon.ZeroMQ
                                     var message = netmqMessage.ToMessage(out var envelope);
                                     //var sourceEnvelope = message.Envelope;
 
+                                    string service = message.Metadata.TryGetLast("service", out var encodedService) ? Encoding.UTF8.GetString(encodedService) : null;
+
                                     this.OnFrontendReceived(message);
 
                                     var forwardStart = DateTime.UtcNow;
                                     RegisteredBackend registeredBackend = null;
-                                    while (this.IsRunning && registeredBackend == null)
+                                    if (!string.IsNullOrEmpty(service))
                                     {
-                                        while (this.backendEndpointIds.TryDequeue(out string backendIdentifier))
+                                        while (this.IsRunning && registeredBackend == null)
                                         {
-                                            if (this.backendEndpoints.TryGetValue(backendIdentifier, out RegisteredBackend candidateBackend))
+                                            if (this.backendEndpointIds.TryGetValue(service, out var backendEndpointIds))
                                             {
-                                                this.backendEndpointIds.Enqueue(backendIdentifier);
-
-                                                if (candidateBackend.IsConnected)
+                                                while (backendEndpointIds.TryDequeue(out string backendIdentifier))
                                                 {
-                                                    registeredBackend = this.backendEndpoints[backendIdentifier];
-                                                    break;
+                                                    if (this.backendEndpoints.TryGetValue(backendIdentifier, out RegisteredBackend candidateBackend))
+                                                    {
+                                                        backendEndpointIds.Enqueue(backendIdentifier);
+
+                                                        if (candidateBackend.IsConnected)
+                                                        {
+                                                            registeredBackend = this.backendEndpoints[backendIdentifier];
+                                                            break;
+                                                        }
+                                                    }
                                                 }
                                             }
 
-                                            //if ((DateTime.UtcNow - registeredBackend.RegisteredDate).TotalMilliseconds < 10000)
-                                            //{
-                                            //    this.backendEndpointIds.Enqueue(backendIdentifier);
-                                            //    break;
-                                            //}
-                                            //else
-                                            //{
-                                            //    if (this.backendEndpoints.TryRemove(backendIdentifier, out RegisteredBackend expiredBackend))
-                                            //    {
-                                            //        Console.WriteLine($"Backend {backendIdentifier} expired");
+                                            if (registeredBackend != null || (DateTime.Now - forwardStart).TotalMilliseconds > 30000)
+                                            {
+                                                break;
+                                            }
 
-                                            //        expiredBackend.Close().ContinueWith((result) =>
-                                            //        {
-                                            //            Console.WriteLine($"Backend {backendIdentifier} closed");
-                                            //        });
-                                            //    }
-                                            //}
+                                            System.Threading.Thread.Sleep(100);
                                         }
-
-                                        if (registeredBackend != null || (DateTime.Now - forwardStart).TotalMilliseconds > 30000)
-                                        {
-                                            break;
-                                        }
-
-                                        System.Threading.Thread.Sleep(100);
                                     }
 
                                     if (registeredBackend != null)
@@ -342,7 +346,7 @@ namespace Axon.ZeroMQ
                             {
                                 while (this.frontendBuffer.TryDequeue(out TransportMessage message, TimeSpan.Zero))
                                 {
-                                    if (!message.Metadata.TryPluck($"envelope[{this.Identity}]", out var envelope))
+                                    if (!message.Metadata.TryPluckLast($"envelope[{this.Identity}]", out var envelope))
                                         throw new Exception("Message envelope not found");
 
                                     this.OnBackendForwarded(message);
@@ -427,41 +431,42 @@ namespace Axon.ZeroMQ
             {
                 try
                 {
-                    //foreach (var backendDiscoverer in this.BackendDiscoverers)
-                    //{
-                    //}
-
-                    var endpoints = await this.BackendDiscoverer.DiscoverAll();
-
-                    foreach (var endpoint in endpoints)
+                    foreach (var backendDiscoverer in this.BackendDiscoverers)
                     {
-                        var endpointId = BitConverter.ToString(endpoint.Encode());
+                        var backendEndpointIds = this.backendEndpointIds.GetOrAdd(backendDiscoverer.Name, new ConcurrentQueue<string>());
 
-                        var registeredEndpoint = new RegisteredBackend(endpoint, this);
+                        var endpoints = await backendDiscoverer.Discoverer.DiscoverAll();
 
-                        if (this.backendEndpoints.TryAdd(endpointId, registeredEndpoint))
+                        foreach (var endpoint in endpoints)
                         {
-                            registeredEndpoint.Connect();
+                            var endpointId = BitConverter.ToString(endpoint.Encode());
 
-                            Console.WriteLine($"Backend registered [ {endpointId} ] ");
-                            this.backendEndpointIds.Enqueue(endpointId);
-                        }
-                        else
-                        {
-                            this.backendEndpoints[endpointId].Heartbeat();
-                        }
-                    }
+                            var registeredEndpoint = new RegisteredBackend(backendDiscoverer.Name, endpoint, this);
 
-                    foreach (var endpointId in this.backendEndpoints.Keys)
-                    {
-                        if (!endpoints.Any(endpoint => BitConverter.ToString(endpoint.Encode()) == endpointId))
-                        {
-                            if (this.backendEndpoints.TryRemove(endpointId, out RegisteredBackend expiredBackend))
+                            if (this.backendEndpoints.TryAdd(endpointId, registeredEndpoint))
                             {
-                                Console.WriteLine($"Backend {endpointId} expired");
-                                expiredBackend.Close();
+                                registeredEndpoint.Connect();
+
+                                Console.WriteLine($"Backend registered [ {backendDiscoverer.Name}/{endpointId} ] ");
+                                backendEndpointIds.Enqueue(endpointId);
+                            }
+                            else
+                            {
+                                this.backendEndpoints[endpointId].Heartbeat();
                             }
                         }
+
+                        //foreach (var endpointId in this.backendEndpoints.Keys)
+                        //{
+                        //    if (!endpoints.Any(endpoint => BitConverter.ToString(endpoint.Encode()) == endpointId))
+                        //    {
+                        //        if (this.backendEndpoints.TryRemove(endpointId, out RegisteredBackend expiredBackend))
+                        //        {
+                        //            Console.WriteLine($"Backend {backendDiscoverer.Name}/{endpointId} expired");
+                        //            expiredBackend.Close();
+                        //        }
+                        //    }
+                        //}
                     }
                 }
                 catch (Exception ex)

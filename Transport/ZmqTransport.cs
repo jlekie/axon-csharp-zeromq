@@ -7,6 +7,10 @@ using System.Threading.Tasks;
 using System.IO;
 using System.Text;
 
+#if NETSTANDARD
+using Microsoft.Extensions.Logging;
+#endif
+
 using NetMQ;
 using NetMQ.Sockets;
 
@@ -455,7 +459,7 @@ namespace Axon.ZeroMQ
                             {
                                 while (this.AltSendBuffer.TryDequeue(out var message, TimeSpan.Zero))
                                 {
-                                    if (!message.Metadata.TryPluck($"envelope[{this.Identity}]", out var envelope))
+                                    if (!message.Metadata.TryPluckLast($"envelope[{this.Identity}]", out var envelope))
                                         throw new Exception("Message envelope not found");
 
                                     if (!socket.TrySendMultipartMessage(TimeSpan.FromSeconds(1), message.ToNetMQMessage(envelope)))
@@ -992,7 +996,11 @@ namespace Axon.ZeroMQ
                         }, TaskContinuationOptions.OnlyOnFaulted);
                         pollerTask.Start();
 
+                        //Console.WriteLine($"Connecting Initial ({this.IsConnected}/{this.IsRunning})...");
+
                         socket.Connect(endpoint.ToConnectionString());
+
+                        //Console.WriteLine($"Connecting Standby ({this.IsConnected}/{this.IsRunning})...");
 
                         var start = DateTime.Now;
                         while (!this.IsConnected)
@@ -1011,6 +1019,8 @@ namespace Axon.ZeroMQ
                             await Task.Delay(1000);
                         }
 
+                        //Console.WriteLine($"Holding pattern ({this.IsConnected}/{this.IsRunning})...");
+
                         lastActivityTime = DateTime.UtcNow;
                         while (this.IsConnected && this.IsRunning)
                         {
@@ -1022,7 +1032,7 @@ namespace Axon.ZeroMQ
                                 this.IsRunning = false;
                         }
 
-                        Console.WriteLine("Closing dealer socket...");
+                        Console.WriteLine($"Closing dealer socket...");
                         poller.StopAsync();
                         socket.Disconnect(endpoint.ToConnectionString());
                         monitor.DetachFromPoller();
@@ -1178,12 +1188,13 @@ namespace Axon.ZeroMQ
         {
             if (!this.IsConnected)
             {
-                await this.Connect(5000);
+                await this.Connect();
             }
         }
 
         protected virtual void OnHandlerError(Exception ex)
         {
+            Console.WriteLine(ex.Message);
             this.HandlerError?.Invoke(this, new HandlerErrorEventArgs(ex));
         }
     }
