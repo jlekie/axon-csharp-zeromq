@@ -7,10 +7,6 @@ using System.Threading.Tasks;
 using System.IO;
 using System.Text;
 
-#if NETSTANDARD
-using Microsoft.Extensions.Logging;
-#endif
-
 using NetMQ;
 using NetMQ.Sockets;
 
@@ -882,7 +878,7 @@ namespace Axon.ZeroMQ
                                     {
                                         var decodedRid = Encoding.ASCII.GetString(encodedRid);
 
-                                        this.TaggedReceiveBuffer.AddOrUpdate(decodedRid, new BlockingCollection<TransportMessage>(), (key, receiveBuffer) =>
+                                        this.TaggedReceiveBuffer.AddOrUpdate(decodedRid, (key) => new BlockingCollection<TransportMessage>(), (key, receiveBuffer) =>
                                         {
                                             receiveBuffer.Add(message);
                                             return receiveBuffer;
@@ -1146,9 +1142,11 @@ namespace Axon.ZeroMQ
         }
         private TransportMessage GetBufferedTaggedData(string rid)
         {
-            var receiveBuffer = this.TaggedReceiveBuffer.GetOrAdd(rid, new BlockingCollection<TransportMessage>());
+            var receiveBuffer = this.TaggedReceiveBuffer.GetOrAdd(rid, (key) => new BlockingCollection<TransportMessage>());
 
             var data = receiveBuffer.Take();
+
+            this.TaggedReceiveBuffer.TryRemove(rid, out _);
 
             return data;
 
