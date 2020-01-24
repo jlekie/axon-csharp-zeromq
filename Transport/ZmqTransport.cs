@@ -259,7 +259,7 @@ namespace Axon.ZeroMQ
         //}
 
         private readonly BlockingCollection<TransportMessage> ReceiveBuffer;
-        private readonly ConcurrentDictionary<string, TransportMessage> TaggedReceiveBuffer;
+        private readonly ConcurrentDictionary<string, BlockingCollection<TransportMessage>> TaggedReceiveBuffer;
         //private readonly ConcurrentQueue<Message> SendBuffer;
 
         private Task ListeningTask;
@@ -275,7 +275,7 @@ namespace Axon.ZeroMQ
             //this.identity = Guid.NewGuid().ToString().Replace("-", "").ToLowerInvariant();
 
             this.ReceiveBuffer = new BlockingCollection<TransportMessage>();
-            this.TaggedReceiveBuffer = new ConcurrentDictionary<string, TransportMessage>();
+            this.TaggedReceiveBuffer = new ConcurrentDictionary<string, BlockingCollection<TransportMessage>>();
             //this.SendBuffer = new ConcurrentQueue<Message>();
         }
 
@@ -384,7 +384,11 @@ namespace Axon.ZeroMQ
                                     {
                                         var decodedRid = Encoding.ASCII.GetString(encodedRid);
 
-                                        this.TaggedReceiveBuffer.TryAdd(decodedRid, message);
+                                        this.TaggedReceiveBuffer.AddOrUpdate(decodedRid, (key) => new BlockingCollection<TransportMessage>(), (key, receiveBuffer) =>
+                                        {
+                                            receiveBuffer.Add(message);
+                                            return receiveBuffer;
+                                        });
                                     }
                                     else
                                     {
@@ -578,77 +582,87 @@ namespace Axon.ZeroMQ
         private DateTime lastGetBufferedTaggedData = DateTime.UtcNow;
         private async Task<TaggedTransportMessage> GetBufferedTaggedData(int timeout = 0)
         {
-            TransportMessage message;
-            string tag;
+            throw new NotImplementedException();
 
-            tag = this.TaggedReceiveBuffer.Keys.FirstOrDefault();
-            if (!string.IsNullOrEmpty(tag) && this.TaggedReceiveBuffer.TryRemove(tag, out message))
-            {
-                this.lastGetBufferedTaggedData = DateTime.UtcNow;
-                // Console.WriteLine("Received Tagged Message");
+            //TransportMessage message;
+            //string tag;
 
-                return new TaggedTransportMessage(tag, message);
-            }
-            else
-            {
-                var start = DateTime.Now;
+            //tag = this.TaggedReceiveBuffer.Keys.FirstOrDefault();
+            //if (!string.IsNullOrEmpty(tag) && this.TaggedReceiveBuffer.TryRemove(tag, out message))
+            //{
+            //    this.lastGetBufferedTaggedData = DateTime.UtcNow;
+            //    // Console.WriteLine("Received Tagged Message");
 
-                while (this.IsRunning)
-                {
-                    tag = this.TaggedReceiveBuffer.Keys.FirstOrDefault();
-                    if (!string.IsNullOrEmpty(tag) && this.TaggedReceiveBuffer.TryRemove(tag, out message))
-                    {
-                        this.lastGetBufferedTaggedData = DateTime.UtcNow;
-                        // Console.WriteLine("Received Tagged Message");
+            //    return new TaggedTransportMessage(tag, message);
+            //}
+            //else
+            //{
+            //    var start = DateTime.Now;
 
-                        return new TaggedTransportMessage(tag, message);
-                    }
-                    else if (timeout > 0 && (DateTime.Now - start).TotalMilliseconds > timeout)
-                    {
-                        throw new Exception("Tagged message timeout");
-                    }
+            //    while (this.IsRunning)
+            //    {
+            //        tag = this.TaggedReceiveBuffer.Keys.FirstOrDefault();
+            //        if (!string.IsNullOrEmpty(tag) && this.TaggedReceiveBuffer.TryRemove(tag, out message))
+            //        {
+            //            this.lastGetBufferedTaggedData = DateTime.UtcNow;
+            //            // Console.WriteLine("Received Tagged Message");
 
-                    if ((DateTime.UtcNow - this.lastGetBufferedTaggedData).TotalSeconds > 1)
-                        await Task.Delay(1);
-                }
+            //            return new TaggedTransportMessage(tag, message);
+            //        }
+            //        else if (timeout > 0 && (DateTime.Now - start).TotalMilliseconds > timeout)
+            //        {
+            //            throw new Exception("Tagged message timeout");
+            //        }
 
-                throw new Exception("Transport stopped");
-            }
+            //        if ((DateTime.UtcNow - this.lastGetBufferedTaggedData).TotalSeconds > 1)
+            //            await Task.Delay(1);
+            //    }
+
+            //    throw new Exception("Transport stopped");
+            //}
         }
         private async Task<TransportMessage> GetBufferedTaggedData(string rid, int timeout = 0)
         {
-            TransportMessage message;
-            if (!this.TaggedReceiveBuffer.IsEmpty && this.TaggedReceiveBuffer.TryRemove(rid, out message))
-            {
-                this.lastGetBufferedTaggedData = DateTime.UtcNow;
-                // Console.WriteLine("Received Tagged Message");
+            var receiveBuffer = this.TaggedReceiveBuffer.GetOrAdd(rid, (key) => new BlockingCollection<TransportMessage>());
 
-                return message;
-            }
-            else
-            {
-                var start = DateTime.Now;
+            var data = receiveBuffer.Take();
 
-                while (this.IsRunning)
-                {
-                    if (!this.TaggedReceiveBuffer.IsEmpty && this.TaggedReceiveBuffer.TryRemove(rid, out message))
-                    {
-                        this.lastGetBufferedTaggedData = DateTime.UtcNow;
-                        // Console.WriteLine("Received Tagged Message");
+            this.TaggedReceiveBuffer.TryRemove(rid, out _);
 
-                        return message;
-                    }
-                    else if (timeout > 0 && (DateTime.Now - start).TotalMilliseconds > timeout)
-                    {
-                        throw new Exception("Tagged message timeout");
-                    }
+            return data;
 
-                    if ((DateTime.UtcNow - this.lastGetBufferedTaggedData).TotalSeconds > 1)
-                        await Task.Delay(1);
-                }
+            //TransportMessage message;
+            //if (!this.TaggedReceiveBuffer.IsEmpty && this.TaggedReceiveBuffer.TryRemove(rid, out message))
+            //{
+            //    this.lastGetBufferedTaggedData = DateTime.UtcNow;
+            //    // Console.WriteLine("Received Tagged Message");
 
-                throw new Exception("Transport stopped");
-            }
+            //    return message;
+            //}
+            //else
+            //{
+            //    var start = DateTime.Now;
+
+            //    while (this.IsRunning)
+            //    {
+            //        if (!this.TaggedReceiveBuffer.IsEmpty && this.TaggedReceiveBuffer.TryRemove(rid, out message))
+            //        {
+            //            this.lastGetBufferedTaggedData = DateTime.UtcNow;
+            //            // Console.WriteLine("Received Tagged Message");
+
+            //            return message;
+            //        }
+            //        else if (timeout > 0 && (DateTime.Now - start).TotalMilliseconds > timeout)
+            //        {
+            //            throw new Exception("Tagged message timeout");
+            //        }
+
+            //        if ((DateTime.UtcNow - this.lastGetBufferedTaggedData).TotalSeconds > 1)
+            //            await Task.Delay(1);
+            //    }
+
+            //    throw new Exception("Transport stopped");
+            //}
         }
 
         private async Task EnsureListening()
