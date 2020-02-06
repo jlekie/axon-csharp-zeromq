@@ -236,9 +236,21 @@ namespace Axon.ZeroMQ
         }
     }
 
+    public class DiagnosticMessageEventArgs : EventArgs
+    {
+        public string Message { get; private set; }
+
+        public DiagnosticMessageEventArgs(string message)
+            : base()
+        {
+            this.Message = message;
+        }
+    }
+
     public class RouterServerTransport : AServerTransport, IRouterServerTransport
     {
         public event EventHandler<HandlerErrorEventArgs> HandlerError;
+        public event EventHandler<DiagnosticMessageEventArgs> DiagnosticMessage;
 
         private readonly IZeroMQServerEndpoint endpoint;
         public IZeroMQServerEndpoint Endpoint
@@ -300,11 +312,29 @@ namespace Axon.ZeroMQ
 
         public override async Task Send(TransportMessage message)
         {
+            this.OnDiagnosticMessage($"[{this.Identity}] ATTEMPTING SEND MESSAGE");
+
             await this.EnsureListening();
+
+            this.OnDiagnosticMessage($"[{this.Identity}] FORMATTING SEND MESSAGE");
 
             var forwardedMessage = TransportMessage.FromMessage(message);
 
-            this.OnMessageSending(forwardedMessage);
+            this.OnDiagnosticMessage($"[{this.Identity}] NOTIFYING SEND MESSAGE");
+
+            try
+            {
+                this.OnDiagnosticMessage($"[{this.Identity}] NOTIFYING SEND MESSAGE 1");
+                this.OnMessageSending(forwardedMessage);
+                this.OnDiagnosticMessage($"[{this.Identity}] NOTIFYING SEND MESSAGE 2");
+            }
+            catch (Exception ex)
+            {
+                this.OnDiagnosticMessage("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+                this.OnDiagnosticMessage(ex.Message + ": " + ex.StackTrace);
+            }
+
+            this.OnDiagnosticMessage($"[{this.Identity}] ENQUEUING SEND MESSAGE");
 
             this.AltSendBuffer.Enqueue(forwardedMessage);
         }
@@ -459,6 +489,7 @@ namespace Axon.ZeroMQ
                             {
                                 while (this.AltSendBuffer.TryDequeue(out var message, TimeSpan.Zero))
                                 {
+                                    this.OnDiagnosticMessage($"[{this.Identity}] SENDING");
                                     if (!message.Metadata.TryPluckLast($"envelope[{this.Identity}]", out var envelope))
                                         throw new Exception("Message envelope not found");
 
@@ -466,6 +497,8 @@ namespace Axon.ZeroMQ
                                     {
                                         Console.WriteLine("Failed to send message");
                                     }
+
+                                    this.OnDiagnosticMessage($"[{this.Identity}] SENT MESSAGE");
 
                                     this.OnMessageSent(message);
                                 }
@@ -675,7 +708,12 @@ namespace Axon.ZeroMQ
 
         protected virtual void OnHandlerError(Exception ex)
         {
+            Console.WriteLine(ex.Message + ": " + ex.StackTrace);
             this.HandlerError?.Invoke(this, new HandlerErrorEventArgs(ex));
+        }
+        protected virtual void OnDiagnosticMessage(string message)
+        {
+            this.DiagnosticMessage?.Invoke(this, new DiagnosticMessageEventArgs(message));
         }
     }
 
