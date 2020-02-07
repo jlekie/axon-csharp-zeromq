@@ -236,21 +236,9 @@ namespace Axon.ZeroMQ
         }
     }
 
-    public class DiagnosticMessageEventArgs : EventArgs
-    {
-        public string Message { get; private set; }
-
-        public DiagnosticMessageEventArgs(string message)
-            : base()
-        {
-            this.Message = message;
-        }
-    }
-
     public class RouterServerTransport : AServerTransport, IRouterServerTransport
     {
         public event EventHandler<HandlerErrorEventArgs> HandlerError;
-        public event EventHandler<DiagnosticMessageEventArgs> DiagnosticMessage;
 
         private readonly IZeroMQServerEndpoint endpoint;
         public IZeroMQServerEndpoint Endpoint
@@ -328,10 +316,10 @@ namespace Axon.ZeroMQ
                 this.OnMessageSending(forwardedMessage);
                 this.OnDiagnosticMessage($"[{this.Identity}] NOTIFYING SEND MESSAGE 2");
             }
-            catch (Exception ex)
+            catch
             {
                 this.OnDiagnosticMessage("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-                this.OnDiagnosticMessage(ex.Message + ": " + ex.StackTrace);
+                //this.OnDiagnosticMessage(ex.Message + ": " + ex.StackTrace);
             }
 
             this.OnDiagnosticMessage($"[{this.Identity}] ENQUEUING SEND MESSAGE");
@@ -710,10 +698,6 @@ namespace Axon.ZeroMQ
         {
             Console.WriteLine(ex.Message + ": " + ex.StackTrace);
             this.HandlerError?.Invoke(this, new HandlerErrorEventArgs(ex));
-        }
-        protected virtual void OnDiagnosticMessage(string message)
-        {
-            this.DiagnosticMessage?.Invoke(this, new DiagnosticMessageEventArgs(message));
         }
     }
 
