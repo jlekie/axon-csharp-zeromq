@@ -111,7 +111,7 @@ namespace Axon.ZeroMQ
                                 }
                                 catch (Exception ex)
                                 {
-                                    Console.WriteLine(ex.Message + ": " + ex.StackTrace);
+                                    //Console.WriteLine(ex.Message + ": " + ex.StackTrace);
                                 }
                             };
 
@@ -131,7 +131,7 @@ namespace Axon.ZeroMQ
                                 }
                                 catch (Exception ex)
                                 {
-                                    Console.WriteLine(ex.Message + ": " + ex.StackTrace);
+                                    //Console.WriteLine(ex.Message + ": " + ex.StackTrace);
                                 }
                             };
 
@@ -192,7 +192,7 @@ namespace Axon.ZeroMQ
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine(ex.Message + ": " + ex.StackTrace);
+                        //Console.WriteLine(ex.Message + ": " + ex.StackTrace);
                     }
                 }
             }

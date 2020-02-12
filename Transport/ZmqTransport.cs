@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.IO;
 using System.Text;
@@ -774,7 +775,7 @@ namespace Axon.ZeroMQ
             //this.SendBuffer = new ConcurrentQueue<Message>();
         }
 
-        public override async Task Connect(int timeout = 0)
+        public override async Task Connect()
         {
             if (!this.IsRunning)
             {
@@ -783,21 +784,26 @@ namespace Axon.ZeroMQ
                 // this.ListeningTask = Task.Factory.StartNew(() => this.ServerHandler(), TaskCreationOptions.LongRunning);
                 this.ListeningTask = Task.Factory.StartNew(() => this.ServerHandler(), TaskCreationOptions.LongRunning).Unwrap();
             }
+        }
+        public override async Task Connect(CancellationToken cancellationToken)
+        {
+            await this.Connect();
 
             var startTime = DateTime.UtcNow;
             while (!this.IsConnected)
             {
-                if (timeout > 0 && (DateTime.UtcNow - startTime).TotalMilliseconds > timeout)
+                if (cancellationToken.IsCancellationRequested)
                 {
                     this.IsRunning = false;
                     await this.ListeningTask;
 
-                    throw new Exception("Connection timeout");
+                    throw new OperationCanceledException("Connection timeout");
                 }
 
                 await Task.Delay(500);
             }
         }
+
         public async override Task Close()
         {
             this.IsRunning = false;
@@ -838,7 +844,9 @@ namespace Axon.ZeroMQ
         }
         public override async Task<TransportMessage> Receive(string messageId)
         {
-            var message = this.GetBufferedTaggedData(messageId);
+            var cancellationSource = new CancellationTokenSource(30000);
+
+            var message = this.GetBufferedTaggedData(messageId, cancellationSource.Token);
 
             this.OnMessageReceived(message);
 
@@ -1219,6 +1227,16 @@ namespace Axon.ZeroMQ
             //    throw new Exception("Transport stopped");
             //}
         }
+        private TransportMessage GetBufferedTaggedData(string rid, CancellationToken cancellationToken)
+        {
+            var receiveBuffer = this.TaggedReceiveBuffer.GetOrAdd(rid, (key) => new BlockingCollection<TransportMessage>());
+
+            var data = receiveBuffer.Take(cancellationToken);
+
+            this.TaggedReceiveBuffer.TryRemove(rid, out _);
+
+            return data;
+        }
 
         private async Task<IZeroMQClientEndpoint> ResolveEndpoint(int timeout = 0)
         {
@@ -1244,7 +1262,7 @@ namespace Axon.ZeroMQ
 
         protected virtual void OnHandlerError(Exception ex)
         {
-            Console.WriteLine(ex.Message);
+            //Console.WriteLine(ex.Message);
             this.HandlerError?.Invoke(this, new HandlerErrorEventArgs(ex));
         }
     }
