@@ -797,7 +797,7 @@ namespace Axon.ZeroMQ
                     this.IsRunning = false;
                     await this.ListeningTask;
 
-                    throw new OperationCanceledException("Connection timeout");
+                    throw new OperationCanceledException("Connection timeout", cancellationToken);
                 }
 
                 await Task.Delay(500);
