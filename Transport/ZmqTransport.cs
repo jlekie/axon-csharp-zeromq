@@ -777,6 +777,12 @@ namespace Axon.ZeroMQ
 
         public override async Task Connect()
         {
+            var cancellationSource = new CancellationTokenSource(30000);
+
+            await this.Connect(cancellationSource.Token);
+        }
+        public override async Task Connect(CancellationToken cancellationToken)
+        {
             if (!this.IsRunning)
             {
                 this.IsRunning = true;
@@ -784,10 +790,6 @@ namespace Axon.ZeroMQ
                 // this.ListeningTask = Task.Factory.StartNew(() => this.ServerHandler(), TaskCreationOptions.LongRunning);
                 this.ListeningTask = Task.Factory.StartNew(() => this.ServerHandler(), TaskCreationOptions.LongRunning).Unwrap();
             }
-        }
-        public override async Task Connect(CancellationToken cancellationToken)
-        {
-            await this.Connect();
 
             var startTime = DateTime.UtcNow;
             while (!this.IsConnected)
@@ -800,7 +802,7 @@ namespace Axon.ZeroMQ
                     throw new OperationCanceledException("Connection timeout", cancellationToken);
                 }
 
-                await Task.Delay(500);
+                await Task.Delay(500, cancellationToken);
             }
         }
 
@@ -1262,7 +1264,7 @@ namespace Axon.ZeroMQ
 
         protected virtual void OnHandlerError(Exception ex)
         {
-            //Console.WriteLine(ex.Message);
+            Console.WriteLine(ex.Message);
             this.HandlerError?.Invoke(this, new HandlerErrorEventArgs(ex));
         }
     }
