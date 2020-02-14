@@ -336,7 +336,7 @@ namespace Axon.ZeroMQ
                             }
                             catch (Exception ex)
                             {
-                                Console.WriteLine(ex.Message + ": " + ex.StackTrace);
+                                //Console.WriteLine(ex.Message + ": " + ex.StackTrace);
                             }
                         };
 
@@ -359,7 +359,7 @@ namespace Axon.ZeroMQ
                             }
                             catch (Exception ex)
                             {
-                                Console.WriteLine(ex.Message + ": " + ex.StackTrace);
+                                //Console.WriteLine(ex.Message + ": " + ex.StackTrace);
                             }
                         };
 
@@ -420,7 +420,7 @@ namespace Axon.ZeroMQ
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine(ex.Message + ": " + ex.StackTrace);
+                    //Console.WriteLine(ex.Message + ": " + ex.StackTrace);
                 }
             }
         }
@@ -456,22 +456,22 @@ namespace Axon.ZeroMQ
                             }
                         }
 
-                        //foreach (var endpointId in this.backendEndpoints.Keys)
-                        //{
-                        //    if (!endpoints.Any(endpoint => BitConverter.ToString(endpoint.Encode()) == endpointId))
-                        //    {
-                        //        if (this.backendEndpoints.TryRemove(endpointId, out RegisteredBackend expiredBackend))
-                        //        {
-                        //            Console.WriteLine($"Backend {backendDiscoverer.Name}/{endpointId} expired");
-                        //            expiredBackend.Close();
-                        //        }
-                        //    }
-                        //}
+                        foreach (var endpointId in backendEndpointIds)
+                        {
+                            if (!endpoints.Any(endpoint => BitConverter.ToString(endpoint.Encode()) == endpointId))
+                            {
+                                if (this.backendEndpoints.TryRemove(endpointId, out RegisteredBackend expiredBackend))
+                                {
+                                    Console.WriteLine($"Backend {backendDiscoverer.Name}/{endpointId} expired");
+                                    expiredBackend.Close();
+                                }
+                            }
+                        }
                     }
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine(ex.Message + ": " + ex.StackTrace);
+                    //Console.WriteLine(ex.Message + ": " + ex.StackTrace);
                 }
 
                 await Task.Delay(5000);

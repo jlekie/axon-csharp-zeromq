@@ -697,7 +697,7 @@ namespace Axon.ZeroMQ
 
         protected virtual void OnHandlerError(Exception ex)
         {
-            Console.WriteLine(ex.Message + ": " + ex.StackTrace);
+            //Console.WriteLine(ex.Message + ": " + ex.StackTrace);
             this.HandlerError?.Invoke(this, new HandlerErrorEventArgs(ex));
         }
     }
@@ -1264,7 +1264,7 @@ namespace Axon.ZeroMQ
 
         protected virtual void OnHandlerError(Exception ex)
         {
-            Console.WriteLine(ex.Message);
+            //Console.WriteLine(ex.Message);
             this.HandlerError?.Invoke(this, new HandlerErrorEventArgs(ex));
         }
     }
