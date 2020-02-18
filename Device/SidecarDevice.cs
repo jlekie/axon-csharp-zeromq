@@ -283,17 +283,17 @@ namespace Axon.ZeroMQ
                                     var message = netmqMessage.ToMessage(out var envelope);
                                     //var sourceEnvelope = message.Envelope;
 
-                                    string service = message.Metadata.TryGetLast("service", out var encodedService) ? Encoding.UTF8.GetString(encodedService) : null;
+                                    string serviceIdentifier = message.Metadata.TryGetLast("serviceIdentifier", out var encodedService) ? Encoding.UTF8.GetString(encodedService) : null;
 
                                     this.OnFrontendReceived(message);
 
                                     var forwardStart = DateTime.UtcNow;
                                     RegisteredBackend registeredBackend = null;
-                                    if (!string.IsNullOrEmpty(service))
+                                    if (!string.IsNullOrEmpty(serviceIdentifier))
                                     {
                                         while (this.IsRunning && registeredBackend == null)
                                         {
-                                            if (this.backendEndpointIds.TryGetValue(service, out var backendEndpointIds))
+                                            if (this.backendEndpointIds.TryGetValue(serviceIdentifier, out var backendEndpointIds))
                                             {
                                                 while (backendEndpointIds.TryDequeue(out string backendIdentifier))
                                                 {
