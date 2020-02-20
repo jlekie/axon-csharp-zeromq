@@ -59,7 +59,7 @@ namespace Axon.ZeroMQ
                 {
                     this.IsRunning = true;
 
-                    this.HandlerTask = Task.Factory.StartNew(() => this.Handler());
+                    this.HandlerTask = Task.Factory.StartNew(() => this.Handler(), TaskCreationOptions.LongRunning);
                 }
 
                 var startTime = DateTime.UtcNow;
@@ -240,8 +240,8 @@ namespace Axon.ZeroMQ
                 this.isRunning = true;
 
                 this.handlerTask = Task.WhenAll(
-                    Task.Factory.StartNew(() => this.Handler()),
-                    Task.Factory.StartNew(() => this.BackendDiscoveryHandler())
+                    Task.Factory.StartNew(() => this.Handler(), TaskCreationOptions.LongRunning),
+                    Task.Factory.StartNew(() => this.BackendDiscoveryHandler(), TaskCreationOptions.LongRunning)
                 );
             }
 
@@ -291,31 +291,17 @@ namespace Axon.ZeroMQ
                                     RegisteredBackend registeredBackend = null;
                                     if (!string.IsNullOrEmpty(serviceIdentifier))
                                     {
-                                        while (this.IsRunning && registeredBackend == null)
+                                        if (this.backendEndpointIds.TryGetValue(serviceIdentifier, out var backendEndpointIds))
                                         {
-                                            if (this.backendEndpointIds.TryGetValue(serviceIdentifier, out var backendEndpointIds))
+                                            if (backendEndpointIds.TryDequeue(out string backendIdentifier))
                                             {
-                                                while (backendEndpointIds.TryDequeue(out string backendIdentifier))
-                                                {
-                                                    if (this.backendEndpoints.TryGetValue(backendIdentifier, out RegisteredBackend candidateBackend))
-                                                    {
-                                                        backendEndpointIds.Enqueue(backendIdentifier);
+                                                backendEndpointIds.Enqueue(backendIdentifier);
 
-                                                        if (candidateBackend.IsConnected)
-                                                        {
-                                                            registeredBackend = this.backendEndpoints[backendIdentifier];
-                                                            break;
-                                                        }
-                                                    }
+                                                if (this.backendEndpoints.TryGetValue(backendIdentifier, out RegisteredBackend candidateBackend) && candidateBackend.IsConnected)
+                                                {
+                                                    registeredBackend = this.backendEndpoints[backendIdentifier];
                                                 }
                                             }
-
-                                            if (registeredBackend != null || (DateTime.Now - forwardStart).TotalMilliseconds > 30000)
-                                            {
-                                                break;
-                                            }
-
-                                            System.Threading.Thread.Sleep(100);
                                         }
                                     }
 
