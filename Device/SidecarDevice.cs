@@ -348,7 +348,7 @@ namespace Axon.ZeroMQ
                                     }
                                     else
                                     {
-                                        Console.WriteLine("No backends available!!!");
+                                        Console.WriteLine($"No backends available for {serviceIdentifier}!!!");
 
                                         var nmqm = MessageHelpers.CreateNetMQErrorMessage(envelope, "No backends found", message.Metadata);
                                         e.Socket.SendMultipartMessage(nmqm);
