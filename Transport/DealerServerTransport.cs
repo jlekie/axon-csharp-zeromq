@@ -3,6 +3,7 @@ using System.Linq;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using NetMQ;
 using NetMQ.Sockets;
@@ -103,6 +104,12 @@ namespace Axon.ZeroMQ
 
         public override async Task Close()
         {
+            var cancellationSource = new CancellationTokenSource(30000);
+
+            await this.Close(cancellationSource.Token);
+        }
+        public override async Task Close(CancellationToken cancellationToken)
+        {
             this.IsRunning = false;
 
             await this.ListeningTask;
@@ -116,6 +123,10 @@ namespace Axon.ZeroMQ
 
             return message;
         }
+        public override Task<TransportMessage> Receive(CancellationToken cancellationToken)
+        {
+            return this.Receive();
+        }
         public override async Task<TransportMessage> Receive(string messageId)
         {
             var message = await this.GetBufferedTaggedData(messageId, 30000);
@@ -123,6 +134,10 @@ namespace Axon.ZeroMQ
             this.OnMessageReceived(message);
 
             return message;
+        }
+        public override Task<TransportMessage> Receive(string messageId, CancellationToken cancellationToken)
+        {
+            return this.Receive(messageId);
         }
 
         public override async Task<TaggedTransportMessage> ReceiveTagged()
@@ -132,6 +147,10 @@ namespace Axon.ZeroMQ
             this.OnMessageReceived(taggedMessage.Message);
 
             return taggedMessage;
+        }
+        public override Task<TaggedTransportMessage> ReceiveTagged(CancellationToken cancellationToken)
+        {
+            return this.ReceiveTagged();
         }
 
         public override async Task Send(TransportMessage message)
@@ -143,6 +162,10 @@ namespace Axon.ZeroMQ
             this.OnMessageSending(forwardedMessage);
 
             this.AltSendBuffer.Enqueue(forwardedMessage);
+        }
+        public override Task Send(TransportMessage message, CancellationToken cancellationToken)
+        {
+            return this.Send(message);
         }
         public override async Task Send(string messageId, TransportMessage message)
         {
@@ -157,10 +180,18 @@ namespace Axon.ZeroMQ
 
             this.AltSendBuffer.Enqueue(forwardedMessage);
         }
+        public override Task Send(string messageId, TransportMessage message, CancellationToken cancellationToken)
+        {
+            return this.Send(messageId, message);
+        }
 
         public override Task<Func<Task<TransportMessage>>> SendAndReceive(TransportMessage message)
         {
             throw new NotImplementedException();
+        }
+        public override Task<Func<Task<TransportMessage>>> SendAndReceive(TransportMessage message, CancellationToken cancellationToken)
+        {
+            return this.SendAndReceive(message);
         }
 
         //public override Task<Func<Task<ReceivedData>>> SendAndReceive(byte[] data, IDictionary<string, byte[]> metadata)

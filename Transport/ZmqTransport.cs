@@ -292,7 +292,14 @@ namespace Axon.ZeroMQ
 
             return Task.FromResult(false);
         }
+
         public override async Task Close()
+        {
+            var cancellationSource = new CancellationTokenSource(30000);
+
+            await this.Close(cancellationSource.Token);
+        }
+        public override async Task Close(CancellationToken cancellationToken)
         {
             this.IsRunning = false;
 
@@ -327,6 +334,10 @@ namespace Axon.ZeroMQ
 
             this.AltSendBuffer.Enqueue(forwardedMessage);
         }
+        public override Task Send(TransportMessage message, CancellationToken cancellationToken)
+        {
+            return this.Send(message);
+        }
         public override async Task Send(string messageId, TransportMessage message)
         {
             await this.EnsureListening();
@@ -340,6 +351,10 @@ namespace Axon.ZeroMQ
 
             this.AltSendBuffer.Enqueue(forwardedMessage);
         }
+        public override Task Send(string messageId, TransportMessage message, CancellationToken cancellationToken)
+        {
+            return this.Send(messageId, message);
+        }
 
         public override async Task<TransportMessage> Receive()
         {
@@ -349,9 +364,25 @@ namespace Axon.ZeroMQ
 
             return message;
         }
+        public override async Task<TransportMessage> Receive(CancellationToken cancellationToken)
+        {
+            var message = this.GetBufferedData(cancellationToken);
+
+            this.OnMessageReceived(message);
+
+            return message;
+        }
         public override async Task<TransportMessage> Receive(string messageId)
         {
-            var message = await this.GetBufferedTaggedData(messageId, 30000);
+            var message = await this.GetBufferedTaggedData(messageId);
+
+            this.OnMessageReceived(message);
+
+            return message;
+        }
+        public override async Task<TransportMessage> Receive(string messageId, CancellationToken cancellationToken)
+        {
+            var message = await this.GetBufferedTaggedData(messageId, cancellationToken);
 
             this.OnMessageReceived(message);
 
@@ -366,8 +397,20 @@ namespace Axon.ZeroMQ
 
             return taggedMessage;
         }
+        public override async Task<TaggedTransportMessage> ReceiveTagged(CancellationToken cancellationToken)
+        {
+            var taggedMessage = await this.GetBufferedTaggedData(cancellationToken);
+
+            this.OnMessageReceived(taggedMessage.Message);
+
+            return taggedMessage;
+        }
 
         public override Task<Func<Task<TransportMessage>>> SendAndReceive(TransportMessage message)
+        {
+            throw new NotImplementedException();
+        }
+        public override Task<Func<Task<TransportMessage>>> SendAndReceive(TransportMessage message, CancellationToken cancellationToken)
         {
             throw new NotImplementedException();
         }
@@ -564,45 +607,14 @@ namespace Axon.ZeroMQ
         private TransportMessage GetBufferedData()
         {
             return this.ReceiveBuffer.Take();
-
-            //TransportMessage message;
-            //if (!this.ReceiveBuffer.IsEmpty && this.ReceiveBuffer.TryDequeue(out message))
-            //{
-            //    this.lastGetBufferedData = DateTime.UtcNow;
-            //    // Console.WriteLine("Getting Message");
-            //    // MessageHelpers.WriteMessage(message);
-
-            //    return message;
-            //}
-            //else
-            //{
-            //    var start = DateTime.Now;
-
-            //    while (this.IsRunning)
-            //    {
-            //        if (!this.ReceiveBuffer.IsEmpty && this.ReceiveBuffer.TryDequeue(out message))
-            //        {
-            //            this.lastGetBufferedData = DateTime.UtcNow;
-            //            // Console.WriteLine("Getting Message");
-            //            // MessageHelpers.WriteMessage(message);
-
-            //            return message;
-            //        }
-            //        else if (timeout > 0 && (DateTime.Now - start).TotalMilliseconds > timeout)
-            //        {
-            //            throw new Exception("Message timeout");
-            //        }
-
-            //        if ((DateTime.UtcNow - this.lastGetBufferedData).TotalSeconds > 1)
-            //            await Task.Delay(1);
-            //    }
-
-            //    throw new Exception("Transport stopped");
-            //}
+        }
+        private TransportMessage GetBufferedData(CancellationToken cancellationToken)
+        {
+            return this.ReceiveBuffer.Take(cancellationToken);
         }
 
         private DateTime lastGetBufferedTaggedData = DateTime.UtcNow;
-        private async Task<TaggedTransportMessage> GetBufferedTaggedData(int timeout = 0)
+        private async Task<TaggedTransportMessage> GetBufferedTaggedData()
         {
             throw new NotImplementedException();
 
@@ -643,23 +655,20 @@ namespace Axon.ZeroMQ
             //    throw new Exception("Transport stopped");
             //}
         }
-        private async Task<TransportMessage> GetBufferedTaggedData(string rid, int timeout = 0)
+        private async Task<TaggedTransportMessage> GetBufferedTaggedData(CancellationToken cancellationToken)
         {
-            var receiveBuffer = this.TaggedReceiveBuffer.GetOrAdd(rid, (key) => new BlockingCollection<TransportMessage>());
-
-            var data = receiveBuffer.Take();
-
-            this.TaggedReceiveBuffer.TryRemove(rid, out _);
-
-            return data;
+            throw new NotImplementedException();
 
             //TransportMessage message;
-            //if (!this.TaggedReceiveBuffer.IsEmpty && this.TaggedReceiveBuffer.TryRemove(rid, out message))
+            //string tag;
+
+            //tag = this.TaggedReceiveBuffer.Keys.FirstOrDefault();
+            //if (!string.IsNullOrEmpty(tag) && this.TaggedReceiveBuffer.TryRemove(tag, out message))
             //{
             //    this.lastGetBufferedTaggedData = DateTime.UtcNow;
             //    // Console.WriteLine("Received Tagged Message");
 
-            //    return message;
+            //    return new TaggedTransportMessage(tag, message);
             //}
             //else
             //{
@@ -667,12 +676,13 @@ namespace Axon.ZeroMQ
 
             //    while (this.IsRunning)
             //    {
-            //        if (!this.TaggedReceiveBuffer.IsEmpty && this.TaggedReceiveBuffer.TryRemove(rid, out message))
+            //        tag = this.TaggedReceiveBuffer.Keys.FirstOrDefault();
+            //        if (!string.IsNullOrEmpty(tag) && this.TaggedReceiveBuffer.TryRemove(tag, out message))
             //        {
             //            this.lastGetBufferedTaggedData = DateTime.UtcNow;
             //            // Console.WriteLine("Received Tagged Message");
 
-            //            return message;
+            //            return new TaggedTransportMessage(tag, message);
             //        }
             //        else if (timeout > 0 && (DateTime.Now - start).TotalMilliseconds > timeout)
             //        {
@@ -685,6 +695,26 @@ namespace Axon.ZeroMQ
 
             //    throw new Exception("Transport stopped");
             //}
+        }
+        private async Task<TransportMessage> GetBufferedTaggedData(string rid)
+        {
+            var receiveBuffer = this.TaggedReceiveBuffer.GetOrAdd(rid, (key) => new BlockingCollection<TransportMessage>());
+
+            var data = receiveBuffer.Take();
+
+            this.TaggedReceiveBuffer.TryRemove(rid, out _);
+
+            return data;
+        }
+        private async Task<TransportMessage> GetBufferedTaggedData(string rid, CancellationToken cancellationToken)
+        {
+            var receiveBuffer = this.TaggedReceiveBuffer.GetOrAdd(rid, (key) => new BlockingCollection<TransportMessage>());
+
+            var data = receiveBuffer.Take(cancellationToken);
+
+            this.TaggedReceiveBuffer.TryRemove(rid, out _);
+
+            return data;
         }
 
         private async Task EnsureListening()
@@ -806,9 +836,16 @@ namespace Axon.ZeroMQ
             }
         }
 
-        public async override Task Close()
+        public override async Task Close()
+        {
+            var cancellationSource = new CancellationTokenSource(30000);
+
+            await this.Close(cancellationSource.Token);
+        }
+        public override async Task Close(CancellationToken cancellationToken)
         {
             this.IsRunning = false;
+
             await this.ListeningTask;
         }
 
@@ -821,6 +858,10 @@ namespace Axon.ZeroMQ
             this.OnMessageSending(forwardedMessage);
 
             this.AltSendBuffer.Enqueue(forwardedMessage);
+        }
+        public override Task Send(TransportMessage message, CancellationToken cancellationToken)
+        {
+            return this.SendAndReceive(message);
         }
         public override async Task Send(string messageId, TransportMessage message)
         {
@@ -835,6 +876,10 @@ namespace Axon.ZeroMQ
 
             this.AltSendBuffer.Enqueue(forwardedMessage);
         }
+        public override Task Send(string messageId, TransportMessage message, CancellationToken cancellationToken)
+        {
+            return this.Send(messageId, message);
+        }
 
         public override async Task<TransportMessage> Receive()
         {
@@ -844,19 +889,42 @@ namespace Axon.ZeroMQ
 
             return message;
         }
-        public override async Task<TransportMessage> Receive(string messageId)
+        public override async Task<TransportMessage> Receive(CancellationToken cancellationToken)
         {
-            var cancellationSource = new CancellationTokenSource(30000);
-
-            var message = this.GetBufferedTaggedData(messageId, cancellationSource.Token);
+            var message = this.GetBufferedData(cancellationToken);
 
             this.OnMessageReceived(message);
 
             return message;
         }
+        public override async Task<TransportMessage> Receive(string messageId)
+        {
+            var message = this.GetBufferedTaggedData(messageId);
+
+            this.OnMessageReceived(message);
+
+            return message;
+        }
+        public override async Task<TransportMessage> Receive(string messageId, CancellationToken cancellationToken)
+        {
+            var message = this.GetBufferedTaggedData(messageId, cancellationToken);
+
+            this.OnMessageReceived(message);
+
+            return message;
+        }
+
         public override async Task<TaggedTransportMessage> ReceiveTagged()
         {
             var taggedMessage = await this.GetBufferedTaggedData();
+
+            this.OnMessageReceived(taggedMessage.Message);
+
+            return taggedMessage;
+        }
+        public override async Task<TaggedTransportMessage> ReceiveTagged(CancellationToken cancellationToken)
+        {
+            var taggedMessage = await this.GetBufferedTaggedData(cancellationToken);
 
             this.OnMessageReceived(taggedMessage.Message);
 
@@ -880,6 +948,29 @@ namespace Axon.ZeroMQ
 
             return new Func<Task<TransportMessage>>(async () => {
                 var responseMessage = this.GetBufferedTaggedData(messageId);
+
+                this.OnMessageReceived(responseMessage);
+
+                return responseMessage;
+            });
+        }
+        public override async Task<Func<Task<TransportMessage>>> SendAndReceive(TransportMessage message, CancellationToken cancellationToken)
+        {
+            await this.EnsureConnected();
+
+            var forwardedMessage = TransportMessage.FromMessage(message);
+
+            var messageId = Guid.NewGuid().ToString().Replace("-", "").ToLowerInvariant();
+
+            var encodedMessageId = System.Text.Encoding.ASCII.GetBytes(messageId);
+            forwardedMessage.Metadata.Add($"rid[{this.Identity}]", encodedMessageId);
+
+            this.OnMessageSending(forwardedMessage);
+
+            this.AltSendBuffer.Enqueue(forwardedMessage);
+
+            return new Func<Task<TransportMessage>>(async () => {
+                var responseMessage = this.GetBufferedTaggedData(messageId, cancellationToken);
 
                 this.OnMessageReceived(responseMessage);
 
@@ -1143,9 +1234,54 @@ namespace Axon.ZeroMQ
             //    throw new Exception("Transport stopped");
             //}
         }
+        private TransportMessage GetBufferedData(CancellationToken cancellationToken)
+        {
+            return this.ReceiveBuffer.Take(cancellationToken);
+        }
 
         private DateTime lastGetBufferedTaggedData = DateTime.UtcNow;
-        private async Task<TaggedTransportMessage> GetBufferedTaggedData(int timeout = 0)
+        private async Task<TaggedTransportMessage> GetBufferedTaggedData()
+        {
+            throw new NotImplementedException();
+
+            //TransportMessage message;
+            //string tag;
+
+            //tag = this.TaggedReceiveBuffer.Keys.FirstOrDefault();
+            //if (!this.TaggedReceiveBuffer.IsEmpty && this.TaggedReceiveBuffer.TryRemove(tag, out message))
+            //{
+            //    this.lastGetBufferedTaggedData = DateTime.UtcNow;
+            //    // Console.WriteLine("Received Tagged Message");
+
+            //    return new TaggedTransportMessage(tag, message);
+            //}
+            //else
+            //{
+            //    var start = DateTime.Now;
+
+            //    while (this.IsRunning)
+            //    {
+            //        tag = this.TaggedReceiveBuffer.Keys.FirstOrDefault();
+            //        if (!this.TaggedReceiveBuffer.IsEmpty && this.TaggedReceiveBuffer.TryRemove(tag, out message))
+            //        {
+            //            this.lastGetBufferedTaggedData = DateTime.UtcNow;
+            //            // Console.WriteLine("Received Tagged Message");
+
+            //            return new TaggedTransportMessage(tag, message);
+            //        }
+            //        else if (timeout > 0 && (DateTime.Now - start).TotalMilliseconds > timeout)
+            //        {
+            //            throw new Exception("Tagged message timeout");
+            //        }
+
+            //        if ((DateTime.UtcNow - this.lastGetBufferedTaggedData).TotalSeconds > 1)
+            //            await Task.Delay(1);
+            //    }
+
+            //    throw new Exception("Transport stopped");
+            //}
+        }
+        private async Task<TaggedTransportMessage> GetBufferedTaggedData(CancellationToken cancellationToken)
         {
             throw new NotImplementedException();
 
