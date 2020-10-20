@@ -240,6 +240,8 @@ namespace Axon.ZeroMQ
     public class RouterServerTransport : AServerTransport, IRouterServerTransport
     {
         public event EventHandler<HandlerErrorEventArgs> HandlerError;
+        public event EventHandler Listening;
+        public event EventHandler Closed;
 
         private readonly IZeroMQServerEndpoint endpoint;
         public IZeroMQServerEndpoint Endpoint
@@ -546,11 +548,15 @@ namespace Axon.ZeroMQ
                         {
                             Console.WriteLine($"Router socket listening at {connectionString}");
                             this.IsListening = true;
+
+                            this.OnListening();
                         };
                         monitor.Closed += (sender, e) =>
                         {
                             Console.WriteLine($"Router socket closed on {connectionString}");
                             this.IsListening = false;
+
+                            this.OnClosed();
                         };
 
                         Console.WriteLine($"Attempting to bind socket to {endpoint.ToConnectionString()}");
@@ -590,6 +596,8 @@ namespace Axon.ZeroMQ
                         socket.Unbind(connectionString);
                         monitor.DetachFromPoller();
                         monitor.Stop();
+
+                        this.OnClosed();
                     }
 
                     if (this.IsRunning)
@@ -598,7 +606,7 @@ namespace Axon.ZeroMQ
                 catch (Exception ex)
                 {
                     this.OnHandlerError(ex);
-                    //Console.WriteLine(ex.Message + ": " + ex.StackTrace);
+                    Console.WriteLine(ex.Message + ": " + ex.StackTrace);
                 }
             }
         }
@@ -729,6 +737,14 @@ namespace Axon.ZeroMQ
         {
             //Console.WriteLine(ex.Message + ": " + ex.StackTrace);
             this.HandlerError?.Invoke(this, new HandlerErrorEventArgs(ex));
+        }
+        protected virtual void OnListening()
+        {
+            this.Listening?.Invoke(this, new EventArgs());
+        }
+        protected virtual void OnClosed()
+        {
+            this.Closed?.Invoke(this, new EventArgs());
         }
     }
 

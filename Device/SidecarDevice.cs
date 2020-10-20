@@ -8,6 +8,7 @@ using System.Diagnostics;
 
 using NetMQ;
 using NetMQ.Sockets;
+using System.Threading;
 
 namespace Axon.ZeroMQ
 {
@@ -323,23 +324,7 @@ namespace Axon.ZeroMQ
                                     this.OnFrontendReceived(message);
 
                                     var forwardStart = DateTime.UtcNow;
-                                    RegisteredBackend registeredBackend = null;
-                                    if (!string.IsNullOrEmpty(serviceIdentifier))
-                                    {
-                                        if (this.backendEndpointIds.TryGetValue(serviceIdentifier, out var backendEndpointIds))
-                                        {
-                                            if (backendEndpointIds.TryDequeue(out string backendIdentifier))
-                                            {
-                                                backendEndpointIds.Enqueue(backendIdentifier);
-
-                                                if (this.backendEndpoints.TryGetValue(backendIdentifier, out RegisteredBackend candidateBackend) && candidateBackend.IsConnected)
-                                                {
-                                                    registeredBackend = this.backendEndpoints[backendIdentifier];
-                                                }
-                                            }
-                                        }
-                                    }
-
+                                    RegisteredBackend registeredBackend = this.ResolveBackend(serviceIdentifier);
                                     if (registeredBackend != null)
                                     {
                                         message.Metadata.Add($"envelope[{this.Identity}]", envelope);
@@ -446,6 +431,33 @@ namespace Axon.ZeroMQ
             }
         }
 
+        private RegisteredBackend ResolveBackend(string serviceIdentifier)
+        {
+            var cancellationTokenSource = new CancellationTokenSource(5000);
+
+            return this.ResolveBackend(serviceIdentifier, cancellationTokenSource.Token);
+        }
+        private RegisteredBackend ResolveBackend(string serviceIdentifier, CancellationToken cancellationToken)
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                if (this.backendEndpointIds.TryGetValue(serviceIdentifier, out var backendEndpointIds))
+                {
+                    if (backendEndpointIds.TryDequeue(out string backendIdentifier))
+                    {
+                        backendEndpointIds.Enqueue(backendIdentifier);
+
+                        if (this.backendEndpoints.TryGetValue(backendIdentifier, out RegisteredBackend candidateBackend) && candidateBackend.IsConnected)
+                        {
+                            return this.backendEndpoints[backendIdentifier];
+                        }
+                    }
+                }
+            }
+
+            return null;
+        }
+
         private async Task BackendDiscoveryHandler()
         {
             while (this.IsRunning)
@@ -485,8 +497,22 @@ namespace Axon.ZeroMQ
                                 {
                                     Console.WriteLine($"Backend {backendDiscoverer.Name}/{endpointId} expired");
                                     expiredBackend.Close();
+
+                                    if (this.backendEndpointIds.TryRemove(backendDiscoverer.Name, out var oldEndpoints))
+                                        this.backendEndpointIds.GetOrAdd(backendDiscoverer.Name, new ConcurrentQueue<string>(oldEndpoints.Where(e => e != endpointId)));
                                 }
                             }
+                        }
+                    }
+
+                    foreach (var backendDiscoverer in this.BackendDiscoverers)
+                    {
+                        Console.WriteLine($"Backend: {backendDiscoverer.Name}");
+
+                        var backendEndpointIds = this.backendEndpointIds.GetOrAdd(backendDiscoverer.Name, new ConcurrentQueue<string>());
+                        foreach (var eid in backendEndpointIds)
+                        {
+                            Console.WriteLine($"  {eid}");
                         }
                     }
                 }
