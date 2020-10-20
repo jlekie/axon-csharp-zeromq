@@ -131,7 +131,7 @@ namespace Axon.ZeroMQ
                                 }
                                 catch (Exception ex)
                                 {
-                                    //Console.WriteLine(ex.Message + ": " + ex.StackTrace);
+                                    this.ForwarderDevice.OnDiagnosticMessage(ex.Message + ": " + ex.StackTrace);
                                 }
                             };
 
@@ -143,30 +143,31 @@ namespace Axon.ZeroMQ
                                     {
                                         this.ForwarderDevice.OnFrontendForwarded(message);
 
+                                        this.ForwarderDevice.OnDiagnosticMessage("Forwarding message to " + this.Endpoint.ToConnectionString());
                                         if (!socket.TrySendMultipartMessage(TimeSpan.FromSeconds(1), message.ToNetMQMessage()))
                                         {
-                                            Console.WriteLine("Failed to send message");
+                                            this.ForwarderDevice.OnDiagnosticMessage("Failed to send message");
                                         }
                                     }
                                 }
                                 catch (Exception ex)
                                 {
-                                    //Console.WriteLine(ex.Message + ": " + ex.StackTrace);
+                                    this.ForwarderDevice.OnDiagnosticMessage(ex.Message + ": " + ex.StackTrace);
                                 }
                             };
 
                             monitor.Connected += (sender, e) =>
                             {
-                                Console.WriteLine($"Dealer socket conntected to {this.Endpoint.ToConnectionString()}");
+                                this.ForwarderDevice.OnDiagnosticMessage($"Dealer socket conntected to {this.Endpoint.ToConnectionString()}");
                                 this.IsConnected = true;
                             };
                             monitor.Disconnected += (sender, e) =>
                             {
-                                Console.WriteLine($"Dealer socket disconntected from {this.Endpoint.ToConnectionString()}");
+                                this.ForwarderDevice.OnDiagnosticMessage($"Dealer socket disconntected from {this.Endpoint.ToConnectionString()}");
                                 this.IsConnected = false;
                             };
 
-                            Console.WriteLine($"Attempting to connect to {this.Endpoint.ToConnectionString()}");
+                            this.ForwarderDevice.OnDiagnosticMessage($"Attempting to connect to {this.Endpoint.ToConnectionString()}");
                             monitor.StartAsync();
                             monitor.AttachToPoller(poller);
 
@@ -175,7 +176,7 @@ namespace Axon.ZeroMQ
                             {
                                 var ex = task.Exception;
 
-                                Console.WriteLine(ex.Message + ": " + ex.StackTrace);
+                                this.ForwarderDevice.OnDiagnosticMessage(ex.Message + ": " + ex.StackTrace);
                                 this.IsConnected = false;
                             }, TaskContinuationOptions.OnlyOnFaulted);
                             pollerTask.Start();
@@ -198,7 +199,7 @@ namespace Axon.ZeroMQ
                                 await Task.Delay(1000);
                             }
 
-                            Console.WriteLine("Closing dealer socket...");
+                            this.ForwarderDevice.OnDiagnosticMessage("Closing dealer socket...");
                             poller.StopAsync();
                             socket.Disconnect(this.Endpoint.ToConnectionString());
                             monitor.DetachFromPoller();
@@ -212,7 +213,7 @@ namespace Axon.ZeroMQ
                     }
                     catch (Exception ex)
                     {
-                        //Console.WriteLine(ex.Message + ": " + ex.StackTrace);
+                        this.ForwarderDevice.OnDiagnosticMessage(ex.Message + ": " + ex.StackTrace);
                     }
                 }
             }
@@ -223,6 +224,8 @@ namespace Axon.ZeroMQ
 
         public event EventHandler<MessagingEventArgs> BackendReceived;
         public event EventHandler<MessagingEventArgs> BackendForwarded;
+
+        public event EventHandler<DiagnosticMessageEventArgs> DiagnosticMessage;
 
         //public event EventHandler<RequestForwardedEventArgs> RequestForwarded;
 
@@ -333,7 +336,7 @@ namespace Axon.ZeroMQ
                                     }
                                     else
                                     {
-                                        Console.WriteLine($"No backends available for {serviceIdentifier}!!!");
+                                        this.OnDiagnosticMessage($"No backends available for {serviceIdentifier}!!!");
 
                                         var nmqm = MessageHelpers.CreateNetMQErrorMessage(envelope, "No backends found", message.Metadata);
                                         e.Socket.SendMultipartMessage(nmqm);
@@ -342,7 +345,7 @@ namespace Axon.ZeroMQ
                             }
                             catch (Exception ex)
                             {
-                                //Console.WriteLine(ex.Message + ": " + ex.StackTrace);
+                                this.OnDiagnosticMessage(ex.Message + ": " + ex.StackTrace);
                             }
                         };
 
@@ -359,36 +362,36 @@ namespace Axon.ZeroMQ
 
                                     if (!frontendSocket.TrySendMultipartMessage(TimeSpan.FromSeconds(1), message.ToNetMQMessage(envelope)))
                                     {
-                                        Console.WriteLine("Failed to forward to frontend");
+                                        this.OnDiagnosticMessage("Failed to forward to frontend");
                                     }
                                 }
                             }
                             catch (Exception ex)
                             {
-                                //Console.WriteLine(ex.Message + ": " + ex.StackTrace);
+                                this.OnDiagnosticMessage(ex.Message + ": " + ex.StackTrace);
                             }
                         };
 
                         monitor.Listening += (sender, e) =>
                         {
-                            Console.WriteLine($"Frontend router socket listening at {connectionString}");
+                            this.OnDiagnosticMessage($"Frontend router socket listening at {connectionString}");
                             isListening = true;
                         };
                         monitor.Closed += (sender, e) =>
                         {
-                            Console.WriteLine($"Frontend router socket closed on {connectionString}");
+                            this.OnDiagnosticMessage($"Frontend router socket closed on {connectionString}");
                             isListening = false;
                         };
                         monitor.Accepted += (sender, e) =>
                         {
-                            Console.WriteLine($"Frontend router socket connection accepted at {connectionString}");
+                            this.OnDiagnosticMessage($"Frontend router socket connection accepted at {connectionString}");
                         };
                         monitor.Disconnected += (sender, e) =>
                         {
-                            Console.WriteLine($"Frontend router socket disconnected at {connectionString}");
+                            this.OnDiagnosticMessage($"Frontend router socket disconnected at {connectionString}");
                         };
 
-                        Console.WriteLine($"Attempting to bind frontend socket to {connectionString}");
+                        this.OnDiagnosticMessage($"Attempting to bind frontend socket to {connectionString}");
                         monitor.StartAsync();
                         monitor.AttachToPoller(poller);
 
@@ -397,7 +400,7 @@ namespace Axon.ZeroMQ
                         {
                             var ex = task.Exception;
 
-                            Console.WriteLine(ex.Message + ": " + ex.StackTrace);
+                            this.OnDiagnosticMessage(ex.Message + ": " + ex.StackTrace);
                             isListening = false;
                         }, TaskContinuationOptions.OnlyOnFaulted);
                         pollerTask.Start();
@@ -426,7 +429,7 @@ namespace Axon.ZeroMQ
                 }
                 catch (Exception ex)
                 {
-                    //Console.WriteLine(ex.Message + ": " + ex.StackTrace);
+                    this.OnDiagnosticMessage(ex.Message + ": " + ex.StackTrace);
                 }
             }
         }
@@ -480,7 +483,7 @@ namespace Axon.ZeroMQ
                             {
                                 registeredEndpoint.Connect();
 
-                                Console.WriteLine($"Backend registered [ {backendDiscoverer.Name}/{endpointId} ] ");
+                                this.OnDiagnosticMessage($"Backend registered [ {backendDiscoverer.Name}/{endpointId} ] ");
                                 backendEndpointIds.Enqueue(endpointId);
                             }
                             else
@@ -495,7 +498,7 @@ namespace Axon.ZeroMQ
                             {
                                 if (this.backendEndpoints.TryRemove(endpointId, out RegisteredBackend expiredBackend))
                                 {
-                                    Console.WriteLine($"Backend {backendDiscoverer.Name}/{endpointId} expired");
+                                    this.OnDiagnosticMessage($"Backend {backendDiscoverer.Name}/{endpointId} expired");
                                     expiredBackend.Close();
 
                                     if (this.backendEndpointIds.TryRemove(backendDiscoverer.Name, out var oldEndpoints))
@@ -507,18 +510,18 @@ namespace Axon.ZeroMQ
 
                     foreach (var backendDiscoverer in this.BackendDiscoverers)
                     {
-                        Console.WriteLine($"Backend: {backendDiscoverer.Name}");
+                        this.OnDiagnosticMessage($"Backend: {backendDiscoverer.Name}");
 
                         var backendEndpointIds = this.backendEndpointIds.GetOrAdd(backendDiscoverer.Name, new ConcurrentQueue<string>());
                         foreach (var eid in backendEndpointIds)
                         {
-                            Console.WriteLine($"  {eid}");
+                            this.OnDiagnosticMessage($"  {eid}");
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    //Console.WriteLine(ex.Message + ": " + ex.StackTrace);
+                    this.OnDiagnosticMessage(ex.Message + ": " + ex.StackTrace);
                 }
 
                 await Task.Delay(5000);
@@ -541,6 +544,11 @@ namespace Axon.ZeroMQ
         protected virtual void OnBackendForwarded(TransportMessage message)
         {
             this.BackendForwarded?.Invoke(this, new MessagingEventArgs(message));
+        }
+
+        protected virtual void OnDiagnosticMessage(string message)
+        {
+            this.DiagnosticMessage?.Invoke(this, new DiagnosticMessageEventArgs(message));
         }
 
         //protected virtual void OnRequestForwarded(Activity activity)
