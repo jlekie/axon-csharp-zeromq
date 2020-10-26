@@ -243,6 +243,12 @@ namespace Axon.ZeroMQ
         public event EventHandler Listening;
         public event EventHandler Closed;
 
+        private bool isListening = false;
+        public override bool IsListening
+        {
+            get => this.isListening;
+        }
+
         private readonly IZeroMQServerEndpoint endpoint;
         public IZeroMQServerEndpoint Endpoint
         {
@@ -547,14 +553,14 @@ namespace Axon.ZeroMQ
                         monitor.Listening += (sender, e) =>
                         {
                             Console.WriteLine($"Router socket listening at {connectionString}");
-                            this.IsListening = true;
+                            this.isListening = true;
 
                             this.OnListening();
                         };
                         monitor.Closed += (sender, e) =>
                         {
                             Console.WriteLine($"Router socket closed on {connectionString}");
-                            this.IsListening = false;
+                            this.isListening = false;
 
                             this.OnClosed();
                         };
@@ -570,7 +576,7 @@ namespace Axon.ZeroMQ
 
                             this.OnHandlerError(ex);
                             //Console.WriteLine(ex.Message + ": " + ex.StackTrace);
-                            this.IsListening = false;
+                            this.isListening = false;
                         }, TaskContinuationOptions.OnlyOnFaulted);
                         pollerTask.Start();
 
@@ -751,6 +757,12 @@ namespace Axon.ZeroMQ
     public class DealerClientTransport : AClientTransport, IDealerClientTransport
     {
         public event EventHandler<HandlerErrorEventArgs> HandlerError;
+
+        private bool isConnected = false;
+        public override bool IsConnected
+        {
+            get => this.isConnected;
+        }
 
         private readonly IZeroMQClientEndpoint endpoint;
         public IZeroMQClientEndpoint Endpoint
@@ -1002,7 +1014,7 @@ namespace Axon.ZeroMQ
                 {
                     DateTime lastActivityTime;
 
-                    this.IsConnected = false;
+                    this.isConnected = false;
 
                     //var sendTimer = new NetMQTimer(TimeSpan.FromMilliseconds(10));
 
@@ -1128,12 +1140,12 @@ namespace Axon.ZeroMQ
                         monitor.Connected += (sender, e) =>
                         {
                             Console.WriteLine($"Dealer socket conntected to {endpoint.ToConnectionString()}");
-                            this.IsConnected = true;
+                            this.isConnected = true;
                         };
                         monitor.Disconnected += (sender, e) =>
                         {
                             Console.WriteLine($"Dealer socket disconntected from {endpoint.ToConnectionString()}");
-                            this.IsConnected = false;
+                            this.isConnected = false;
                         };
 
                         Console.WriteLine($"Attempting to connect to {endpoint.ToConnectionString()}");
@@ -1147,7 +1159,7 @@ namespace Axon.ZeroMQ
 
                             this.OnHandlerError(ex);
                             //Console.WriteLine(ex.Message + ": " + ex.StackTrace);
-                            this.IsConnected = false;
+                            this.isConnected = false;
                         }, TaskContinuationOptions.OnlyOnFaulted);
                         pollerTask.Start();
 
@@ -1193,7 +1205,7 @@ namespace Axon.ZeroMQ
                         monitor.DetachFromPoller();
                         monitor.Stop();
 
-                        this.IsConnected = false;
+                        this.isConnected = false;
                     }
 
                     if (this.IsRunning)
