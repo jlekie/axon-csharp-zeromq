@@ -293,20 +293,45 @@ namespace Axon.ZeroMQ
                 var cancellationSource = new CancellationTokenSource(5000);
                 var registeredBackend = this.ResolveBackend(serviceIdentifier, cancellationSource.Token);
 
-                await registeredBackend.Send(message);
+                var messageId = Guid.NewGuid().ToString("N").ToLowerInvariant();
+                await registeredBackend.Send(messageId, message);
+
+                var receivedMessage = await registeredBackend.Receive(messageId);
+                await this.FrontendTransport.Send(receivedMessage);
+                //if (message.Metadata.TryGetLast($"mid[{this.FrontendTransport.Identity}]", out var encodedMessageId))
+                //{
+                //    var messageId = Encoding.UTF8.GetString(encodedMessageId);
+
+                //    await registeredBackend.Send(messageId, message);
+                //}
+                //else
+                //{
+                //    await registeredBackend.Send(message);
+                //}
             }
             catch (OperationCanceledException)
             {
                 this.OnDiagnosticMessage($"No backends available for {serviceIdentifier}!!!");
             }
+            catch (Exception ex)
+            {
+                this.OnDiagnosticMessage($"Backend forwarding error: " + ex.Message);
+
+                Exception innerException = ex.InnerException;
+                while (innerException != null)
+                {
+                    this.OnDiagnosticMessage("  " + innerException.Message);
+                    innerException = innerException.InnerException;
+                }
+            }
         }
-        private async void BackendMessageReceived(object sender, MessagingEventArgs e)
-        {
-            if (string.IsNullOrEmpty(e.Tag))
-                await this.FrontendTransport.Send(e.Message);
-            else
-                await this.FrontendTransport.Send(e.Tag, e.Message);
-        }
+        //private async void BackendMessageReceived(object sender, MessagingEventArgs e)
+        //{
+        //    if (string.IsNullOrEmpty(e.Tag))
+        //        await this.FrontendTransport.Send(e.Message);
+        //    else
+        //        await this.FrontendTransport.Send(e.Tag, e.Message);
+        //}
 
         //private async Task Handler()
         //{
@@ -331,13 +356,13 @@ namespace Axon.ZeroMQ
         {
             this.Backends.GetOrAdd(identifier, (_) => new BlockingCollection<IClientTransport>()).Add(backend);
 
-            backend.MessageReceiving += this.BackendMessageReceived;
+            //backend.MessageReceiving += this.BackendMessageReceived;
         }
         public void AddBackend(string identifier, IClientTransport backend, CancellationToken cancellationToken)
         {
             this.Backends.GetOrAdd(identifier, (_) => new BlockingCollection<IClientTransport>()).Add(backend, cancellationToken);
 
-            backend.MessageReceiving += this.BackendMessageReceived;
+            //backend.MessageReceiving += this.BackendMessageReceived;
         }
 
         private IClientTransport ResolveBackend(string identifier, CancellationToken cancellationToken)
