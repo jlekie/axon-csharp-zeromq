@@ -1,0 +1,30 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- <TargetFramework>netstandard2.0</TargetFramework> -->
+    <TargetFrameworks>netstandard2.0;net452;net46</TargetFrameworks>
+    <SignAssembly>true</SignAssembly>
+    <AssemblyOriginatorKeyFile>Axon.ZeroMQ.snk</AssemblyOriginatorKeyFile>
+    <Company>Axon</Company>
+    <Authors>Joe Lekie</Authors>
+    <Version>1.0.0-alpha.1</Version>
+    <Description>Axon - ZeroMQ Runtime</Description>
+    <PackageTags>Axon RPC ZeroMQ ZMQ NetMQ</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" PrivateAssets="All" Version="1.0.0" />
+    <PackageReference Include="System.Collections.Immutable" Version="1.7.1" />
+    <PackageReference Include="NetMQ" Version="4.0.0.1" />
+    <PackageReference Include="System.Diagnostics.DiagnosticSource" Version="4.7.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="$(AxonCommonProjectPath)" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Properties\" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+    <PackageReference Include="Microsoft.Extensions.Logging">
+      <Version>3.1.1</Version>
+    </PackageReference>
+  </ItemGroup>
+</Project>
